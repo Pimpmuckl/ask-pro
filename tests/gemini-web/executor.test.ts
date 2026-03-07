@@ -53,7 +53,7 @@ const getCookies = vi.fn(async () => ({
     { name: '__Secure-1PSID', value: 'psid', domain: 'google.com', path: '/', secure: true, httpOnly: true },
     { name: '__Secure-1PSIDTS', value: 'psidts', domain: 'google.com', path: '/', secure: true, httpOnly: true },
   ],
-  warnings: [],
+  warnings: [] as string[],
 }));
 vi.mock('@steipete/sweet-cookie', () => ({ getCookies }));
 vi.mock('../../src/browser/chromeLifecycle.js', () => ({
@@ -281,6 +281,29 @@ describe('gemini-web executor', () => {
       log: () => {},
     });
     expect(getCookies).not.toHaveBeenCalled();
+  });
+
+  it('includes cookie read warnings in the missing-cookie error', async () => {
+    getCookies.mockImplementationOnce(async () => ({
+      cookies: [],
+      warnings: [
+        'node:sqlite failed reading Chrome cookies (requires modern Chromium, e.g. Chrome >= 100): Value is too large to be represented as a JavaScript number: 13449189465095212',
+      ],
+    }));
+
+    const { createGeminiWebExecutor } = await import('../../src/gemini-web/executor.js');
+    const exec = createGeminiWebExecutor({});
+
+    await expect(
+      exec({
+        prompt: 'hello',
+        attachments: [],
+        config: { desiredModel: 'Gemini 3 Pro', chromeProfile: 'Default' },
+        log: () => {},
+      }),
+    ).rejects.toThrow(
+      /Cookie read warnings:.*Value is too large to be represented as a JavaScript number[\s\S]*--browser-manual-login[\s\S]*--browser-inline-cookies-file/s,
+    );
   });
 
   it('uses DOM automation for gemini deep-think without keychain cookie reads', async () => {

@@ -34,6 +34,11 @@ const GEMINI_COOKIE_NAMES = [
 
 const GEMINI_REQUIRED_COOKIES = ['__Secure-1PSID', '__Secure-1PSIDTS'] as const;
 
+interface GeminiCookieLoadResult {
+  cookieMap: Record<string, string>;
+  warnings: string[];
+}
+
 function estimateTokenCount(text: string): number {
   return Math.ceil(text.length / 4);
 }
@@ -130,7 +135,7 @@ const GEMINI_CDP_COOKIE_URLS = [
 async function loadGeminiCookiesFromCDP(
   browserConfig: BrowserRunOptions['config'],
   log?: BrowserLogger,
-): Promise<Record<string, string>> {
+): Promise<GeminiCookieLoadResult> {
   const session = await openGeminiBrowserSession({
     browserConfig,
     keepBrowserDefault: false,
@@ -159,7 +164,7 @@ async function loadGeminiCookiesFromCDP(
 
       if (hasRequiredGeminiCookies(cookieMap)) {
         log?.(`[gemini-web] Extracted ${Object.keys(cookieMap).length} Gemini cookie(s) via CDP.`);
-        return cookieMap;
+        return { cookieMap, warnings: [] };
       }
 
       const now = Date.now();
@@ -230,9 +235,9 @@ async function runGeminiDeepThinkViaBrowser(
 async function loadGeminiCookiesFromInline(
   browserConfig: BrowserRunOptions['config'],
   log?: BrowserLogger,
-): Promise<Record<string, string>> {
+): Promise<GeminiCookieLoadResult> {
   const inline = browserConfig?.inlineCookies;
-  if (!inline || inline.length === 0) return {};
+  if (!inline || inline.length === 0) return { cookieMap: {}, warnings: [] };
 
   const cookieMap = buildGeminiCookieMap(
     inline.filter((cookie): cookie is CookieParam => Boolean(cookie?.name && typeof cookie.value === 'string')),
@@ -245,13 +250,13 @@ async function loadGeminiCookiesFromInline(
     log?.('[gemini-web] Inline cookie payload provided but no Gemini cookies matched.');
   }
 
-  return cookieMap;
+  return { cookieMap, warnings: [] };
 }
 
 async function loadGeminiCookiesFromChrome(
   browserConfig: BrowserRunOptions['config'],
   log?: BrowserLogger,
-): Promise<Record<string, string>> {
+): Promise<GeminiCookieLoadResult> {
   try {
     // Learned: Gemini web relies on Google auth cookies in the *browser* profile, not API keys.
     const profileCandidate =
@@ -285,41 +290,57 @@ async function loadGeminiCookiesFromChrome(
     log?.(
       `[gemini-web] Loaded Gemini cookies from Chrome (node): ${Object.keys(cookieMap).length} cookie(s).`,
     );
-    return cookieMap;
+    return { cookieMap, warnings };
   } catch (error) {
     log?.(
       `[gemini-web] Failed to load Chrome cookies via node: ${error instanceof Error ? error.message : String(error ?? '')}`,
     );
-    return {};
+    return { cookieMap: {}, warnings: [] };
   }
+}
+
+function formatGeminiCookieError(warnings: string[]): string {
+  const base =
+    'Gemini browser mode requires Chrome cookies for google.com (missing __Secure-1PSID/__Secure-1PSIDTS).';
+  const guidance =
+    'Try --browser-manual-login or --browser-inline-cookies-file if local cookie extraction is unavailable.';
+  if (warnings.length === 0) {
+    return `${base} ${guidance}`;
+  }
+  return `${base}\nCookie read warnings:\n- ${warnings.join('\n- ')}\n${guidance}`;
 }
 
 async function loadGeminiCookies(
   browserConfig: BrowserRunOptions['config'],
   log?: BrowserLogger,
   options?: { preferManualNoKeychain?: boolean },
-): Promise<Record<string, string>> {
-  const inlineMap = await loadGeminiCookiesFromInline(browserConfig, log);
-  const hasInlineRequired = hasRequiredGeminiCookies(inlineMap);
+): Promise<GeminiCookieLoadResult> {
+  const inlineResult = await loadGeminiCookiesFromInline(browserConfig, log);
+  const hasInlineRequired = hasRequiredGeminiCookies(inlineResult.cookieMap);
   if (hasInlineRequired) {
-    return inlineMap;
+    return inlineResult;
   }
 
   const manualNoKeychain = Boolean(browserConfig?.manualLogin) || Boolean(options?.preferManualNoKeychain);
   if (manualNoKeychain) {
     log?.('[gemini-web] Using manual-login cookie extraction path (no keychain cookie read).');
-    const cdpMap = await loadGeminiCookiesFromCDP(browserConfig, log);
-    return { ...cdpMap, ...inlineMap };
+    const cdpResult = await loadGeminiCookiesFromCDP(browserConfig, log);
+    return {
+      cookieMap: { ...cdpResult.cookieMap, ...inlineResult.cookieMap },
+      warnings: [...inlineResult.warnings, ...cdpResult.warnings],
+    };
   }
 
   if (browserConfig?.cookieSync === false && !hasInlineRequired) {
     log?.('[gemini-web] Cookie sync disabled and inline cookies missing Gemini auth tokens.');
-    return inlineMap;
+    return inlineResult;
   }
 
-  const chromeMap = await loadGeminiCookiesFromChrome(browserConfig, log);
-  const merged = { ...chromeMap, ...inlineMap };
-  return merged;
+  const chromeResult = await loadGeminiCookiesFromChrome(browserConfig, log);
+  return {
+    cookieMap: { ...chromeResult.cookieMap, ...inlineResult.cookieMap },
+    warnings: [...inlineResult.warnings, ...chromeResult.warnings],
+  };
 }
 
 export function createGeminiWebExecutor(
@@ -380,11 +401,9 @@ export function createGeminiWebExecutor(
       mode: 'http',
       execute: async () => {
         const useNoKeychainPath = Boolean(runOptions.config?.manualLogin);
-        const cookieMap = await loadGeminiCookies(runOptions.config, log, { preferManualNoKeychain: useNoKeychainPath });
-        if (!hasRequiredGeminiCookies(cookieMap)) {
-          throw new Error(
-            'Gemini browser mode requires Chrome cookies for google.com (missing __Secure-1PSID/__Secure-1PSIDTS).',
-          );
+        const cookieResult = await loadGeminiCookies(runOptions.config, log, { preferManualNoKeychain: useNoKeychainPath });
+        if (!hasRequiredGeminiCookies(cookieResult.cookieMap)) {
+          throw new Error(formatGeminiCookieError(cookieResult.warnings));
         }
 
         const configTimeout =
@@ -410,7 +429,7 @@ export function createGeminiWebExecutor(
               prompt: 'Here is an image to edit',
               files: [editImagePath],
               model,
-              cookieMap,
+              cookieMap: cookieResult.cookieMap,
               chatMetadata: null,
               signal: controller.signal,
             });
@@ -419,7 +438,7 @@ export function createGeminiWebExecutor(
               prompt: editPrompt,
               files: attachmentPaths,
               model,
-              cookieMap,
+              cookieMap: cookieResult.cookieMap,
               chatMetadata: intro.metadata,
               signal: controller.signal,
             });
@@ -431,7 +450,7 @@ export function createGeminiWebExecutor(
             };
 
             const resolvedOutputPath = outputPath ?? generateImagePath ?? 'generated.png';
-            const imageSave = await saveFirstGeminiImageFromOutput(out, cookieMap, resolvedOutputPath, controller.signal);
+            const imageSave = await saveFirstGeminiImageFromOutput(out, cookieResult.cookieMap, resolvedOutputPath, controller.signal);
             response.has_images = imageSave.saved;
             response.image_count = imageSave.imageCount;
             if (!imageSave.saved) {
@@ -442,7 +461,7 @@ export function createGeminiWebExecutor(
               prompt,
               files: attachmentPaths,
               model,
-              cookieMap,
+              cookieMap: cookieResult.cookieMap,
               chatMetadata: null,
               signal: controller.signal,
             });
@@ -452,7 +471,7 @@ export function createGeminiWebExecutor(
               has_images: false,
               image_count: 0,
             };
-            const imageSave = await saveFirstGeminiImageFromOutput(out, cookieMap, generateImagePath, controller.signal);
+            const imageSave = await saveFirstGeminiImageFromOutput(out, cookieResult.cookieMap, generateImagePath, controller.signal);
             response.has_images = imageSave.saved;
             response.image_count = imageSave.imageCount;
             if (!imageSave.saved) {
@@ -463,7 +482,7 @@ export function createGeminiWebExecutor(
               prompt,
               files: attachmentPaths,
               model,
-              cookieMap,
+              cookieMap: cookieResult.cookieMap,
               chatMetadata: null,
               signal: controller.signal,
             });
