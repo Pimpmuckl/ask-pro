@@ -5,7 +5,7 @@
 ## 0.8.7 — Unreleased
 
 ### Fixed
-- Gemini API: add explicit `gemini-3.1-pro` alias support, map it to Google's preview model id, and keep it API-only so browser runs do not silently target the wrong Gemini web model. (#100)
+- Gemini API: add explicit `gemini-3.1-pro` alias support, map it to Google's preview model id, and keep it API-only so browser runs do not silently target the wrong Gemini web model. (#100, #101) — thanks @ninjaa.
 - CLI: make the per-file `--file` size guard configurable via `ORACLE_MAX_FILE_SIZE_BYTES` or `maxFileSizeBytes` in `~/.oracle/config.json`, and persist that limit for restarts. (#76)
 - Azure: route Responses API runs through Azure's `/openai/v1` endpoint and honor `--azure-deployment` as the dispatched model name. (#92) — thanks @yellowgolfball.
 - Browser: leave headful Chrome/profile state running when a Cloudflare anti-bot challenge interrupts browser mode, and record reuse guidance in the saved session metadata. (#111) — thanks @WinnCook.

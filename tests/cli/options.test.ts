@@ -173,6 +173,7 @@ describe('resolveApiModel', () => {
     expect(resolveApiModel('opus')).toBe('claude-4.1-opus');
     expect(resolveApiModel('CLAUDE')).toBe('claude-4.5-sonnet');
     expect(resolveApiModel('Gemini')).toBe('gemini-3-pro');
+    expect(resolveApiModel('gemini-3.1-pro')).toBe('gemini-3.1-pro');
     expect(resolveApiModel('Gemini 3.1 Pro')).toBe('gemini-3.1-pro');
     expect(resolveApiModel('grok')).toBe('grok-4.1');
     expect(resolveApiModel('Grok 4.1')).toBe('grok-4.1');
@@ -203,6 +204,7 @@ describe('inferModelFromLabel', () => {
     expect(inferModelFromLabel('gpt-5-pro')).toBe('gpt-5-pro');
     expect(inferModelFromLabel('gpt-5.1')).toBe('gpt-5.1');
     expect(inferModelFromLabel('gpt-5.1-codex')).toBe('gpt-5.1-codex');
+    expect(inferModelFromLabel('gemini-3.1-pro')).toBe('gemini-3.1-pro');
   });
 
   test('preserves provider-qualified ids instead of remapping them to built-ins', () => {
