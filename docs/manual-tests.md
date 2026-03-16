@@ -39,7 +39,7 @@ Prereqs:
 
 Run this whenever you touch the session store, CLI session views, or TUI wiring for multi-model runs.
 
-1. Kick off an API multi-run:  
+1. Kick off an API multi-run:
    `pnpm run oracle -- --models "gpt-5.1-pro,gemini-3-pro" --prompt "Compare the moon & sun."`
    - Expect stdout to print sequential sections, one per model (`[gpt-5.1-pro] …` followed by `[gemini-3-pro] …`). No interleaved tokens.
 2. Capture the session ID from the summary line. Run `oracle session --status --model gpt-5.1-pro`.
@@ -141,22 +141,25 @@ Document results (pass/fail, session IDs) in PR descriptions so reviewers can au
 
 Run these four smoke tests whenever we touch browser automation:
 
-1. **GPT-5.2 simple prompt**  
-   `pnpm run oracle -- --engine browser --model "GPT-5.2" --prompt "Give me two short markdown bullet points about tables"`  
-   Expect two markdown bullets, no files/search referenced. Note the session ID (e.g., `give-me-two-short-markdown`).
+Fast-path note:
+- Tests 1-4 below are quick browser-path checks only. They use `gpt-5.2-instant`, which currently targets the ChatGPT Instant 5.3 picker. They are not a substitute for Pro validation.
 
-2. **GPT-5.2 simple prompt**  
-   `pnpm run oracle -- --engine browser --model gpt-5.2 --prompt "List two reasons Markdown is handy"`  
-   Confirm the answer arrives (and only once) even if it takes ~2–3 minutes.
+1. **Fast browser simple prompt**
+   `pnpm run oracle -- --engine browser --model gpt-5.2-instant --prompt "Return exactly one line and nothing else: pro-ok"`
+   Expect the answer body to contain `pro-ok` verbatim on its own line. Note the session ID.
 
-3. **GPT-5.2 + attachment**  
-   Prepare `/tmp/browser-md.txt` with a short note, then run  
-   `pnpm run oracle -- --engine browser --model "GPT-5.2" --prompt "Summarize the key idea from the attached note" --file /tmp/browser-md.txt`  
-   Ensure upload logs show “Attachment queued” and the answer references the file contents explicitly.
+2. **Fast browser exact-line prompt**
+   `pnpm run oracle -- --engine browser --model gpt-5.2-instant --prompt "Return exactly these three lines and nothing else:\n\`\`\`js\nconsole.log('thinking-ok')\n\`\`\`"`
+   Confirm the answer includes the fenced `js` code block and `console.log('thinking-ok')` verbatim.
 
-4. **GPT-5.2 + attachment (verbose)**  
-   Prepare `/tmp/browser-report.txt` with faux metrics, then run  
-   `pnpm run oracle -- --engine browser --model gpt-5.2 --prompt "Use the attachment to report current CPU and memory figures" --file /tmp/browser-report.txt --verbose`  
+3. **Fast browser + attachment**
+   Prepare `/tmp/browser-md.txt` with a short note, then run
+   `pnpm run oracle -- --engine browser --model gpt-5.2-instant --prompt "Return exactly one line and nothing else: note=<paste the file contents exactly>" --file /tmp/browser-md.txt`
+   Ensure upload logs show “Attachment queued” and the answer contains `note=` plus the attached file contents exactly.
+
+4. **Fast browser + attachment (verbose)**
+   Prepare `/tmp/browser-report.txt` with faux metrics, then run
+   `pnpm run oracle -- --engine browser --model gpt-5.2 --prompt "Use the attachment to report current CPU and memory figures" --file /tmp/browser-report.txt --verbose`
    Verify verbose logs show attachment upload and the final answer matches the file data.
    Expected attachment-send logs:
    - `Attachment queued`
@@ -170,6 +173,17 @@ Run these four smoke tests whenever we touch browser automation:
    Validate one of these outcomes:
    - success path: `All attachments uploaded` followed by `Clicked send button`, then the assistant answer
    - fail-fast path: an explicit attachment/browser automation error before send, with no Enter fallback
+
+### Pro browser smoke
+
+Run these when the change might affect Pro-specific behavior, long thinking, or reattach.
+
+1. **Pro markdown capture**
+   `pnpm run oracle -- --engine browser --model gpt-5.4-pro --prompt "Return exactly these three lines and nothing else:\n\`\`\`js\nconsole.log('thinking-ok')\n\`\`\`"`
+   Confirm the answer preserves the fenced `js` code block.
+
+2. **Pro reattach flow**
+   Use `scripts/browser-smoke.sh` or run a manual `--browser-keep-browser` session with `gpt-5.4-pro`, then kill the controller and verify `oracle session <slug> --render-plain` still shows the expected answer.
 
 Record session IDs and outcomes in the PR description (pass/fail, notable delays). This ensures reviewers can audit real runs.
 
@@ -260,8 +274,8 @@ These Vitest cases hit the real OpenAI API to exercise both transports:
    export ORACLE_LIVE_TEST=1
    pnpm vitest run tests/live/openai-live.test.ts
    ```
-2. The first two tests target the standard GPT-5 (`gpt-5.1` / `gpt-5.2`) foreground
-   streaming paths. The later background tests send `gpt-5.4-pro` and `gpt-5.2-pro`
+2. The first two tests target the current fast browser picker path (`gpt-5.2-instant` aliasing
+   to Instant 5.3). The later background tests send `gpt-5.4-pro` and `gpt-5.2-pro`
    prompts and expect the CLI to stay in background mode until OpenAI finishes
    (up to 30 minutes).
 3. Watch the console for `Reconnected to OpenAI background response...` if

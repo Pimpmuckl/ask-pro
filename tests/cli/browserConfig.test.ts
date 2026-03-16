@@ -232,9 +232,17 @@ describe("resolveBrowserModelLabel", () => {
     expect(resolveBrowserModelLabel("   ", "gpt-5.1")).toBe("GPT-5.2");
   });
 
+  test("maps instant and thinking aliases to current browser picker targets", async () => {
+    const instant = await buildBrowserConfig({ model: "gpt-5.2-instant" });
+    const thinking = await buildBrowserConfig({ model: "gpt-5.2-thinking" });
+    expect(instant.desiredModel).toBe("GPT-5.2 Instant");
+    expect(thinking.desiredModel).toBe("GPT-5.2 Thinking");
+  });
+
   test("trims descriptive labels before returning them", () => {
     expect(resolveBrowserModelLabel("  ChatGPT 5.1 Thinking ", "gpt-5.1")).toBe(
       "ChatGPT 5.1 Thinking",
     );
   });
+
 });
