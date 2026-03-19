@@ -6,12 +6,20 @@
 
 - Browser: add ChatGPT `gpt-5.5-pro` / `gpt-5.5` selection labels, make browser-mode runs without an explicit model target `GPT-5.5 Pro`, and keep the API default unchanged.
 
+### Added
+
+- Browser: add `--browser-attach-running` to reuse a local already-running signed-in Chrome through Chrome's local remote-debugging toggle. Oracle opens a dedicated tab, stores attach metadata for reattach, and leaves the browser itself untouched.
+
 ### Fixed
 
 - Browser: recognize ChatGPT's composer-pill model picker and the model-menu thinking-effort control so current ChatGPT UI changes do not break Pro browser runs.
 - Browser: prefer ChatGPT's `Copy response` action over `Copy message` when capturing browser markdown.
 - Browser: stop treating transient reasoning placeholders as completed answers, and scan all assistant content blocks in the latest turn so runs do not finish early when ChatGPT renders a placeholder block before the real answer.
 - Sessions: fix premature session end detection by increasing Chrome port check timeout from 250ms to 1000ms and adding retry logic (2 retries with 100ms delay). This prevents running browser sessions from being incorrectly marked as error when Chrome is temporarily slow to respond under system load.
+
+### Docs
+
+- Browser: document the new attach-running workflow and add a manual smoke test for the direct attach path.
 
 ## 0.9.0 — 2026-03-08
 
