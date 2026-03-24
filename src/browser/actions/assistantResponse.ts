@@ -1083,21 +1083,52 @@ function buildCopyExpression(meta: { messageId?: string | null; turnId?: string 
     ${buildClickDispatcher()}
     const BUTTON_SELECTOR = '${COPY_BUTTON_SELECTOR}';
     const TIMEOUT_MS = 10000;
+    const describeButton = (button) =>
+      [
+        button?.getAttribute?.('aria-label') || '',
+        button?.getAttribute?.('title') || '',
+        button?.textContent || '',
+      ]
+        .join(' ')
+        .toLowerCase()
+        .replace(/\\s+/g, ' ')
+        .trim();
+    const scoreButton = (button) => {
+      const description = describeButton(button);
+      let score = 0;
+      if (!description) return score;
+      if (description.includes('copy')) score += 10;
+      if (description.includes('response')) score += 200;
+      if (description.includes('message')) score += 100;
+      if (description.includes('copied')) score += 20;
+      return score;
+    };
+    const pickPreferredButton = (buttons) => {
+      const list = Array.from(buttons || []).filter((button) => button instanceof HTMLElement);
+      let best = null;
+      let bestScore = -1;
+      for (const button of list) {
+        const score = scoreButton(button);
+        if (score >= bestScore) {
+          best = button;
+          bestScore = score;
+        }
+      }
+      return best;
+    };
 
     const locateButton = () => {
       const hint = ${JSON.stringify(meta ?? {})};
       if (hint?.messageId) {
         const node = document.querySelector('[data-message-id="' + hint.messageId + '"]');
-        const buttons = node ? Array.from(node.querySelectorAll('${COPY_BUTTON_SELECTOR}')) : [];
-        const button = buttons.at(-1) ?? null;
+        const button = node ? pickPreferredButton(node.querySelectorAll(BUTTON_SELECTOR)) : null;
         if (button) {
           return button;
         }
       }
       if (hint?.turnId) {
         const node = document.querySelector('[data-testid="' + hint.turnId + '"]');
-        const buttons = node ? Array.from(node.querySelectorAll('${COPY_BUTTON_SELECTOR}')) : [];
-        const button = buttons.at(-1) ?? null;
+        const button = node ? pickPreferredButton(node.querySelectorAll(BUTTON_SELECTOR)) : null;
         if (button) {
           return button;
         }
@@ -1118,18 +1149,18 @@ function buildCopyExpression(meta: { messageId?: string | null; turnId?: string 
       for (let i = turns.length - 1; i >= 0; i -= 1) {
         const turn = turns[i];
         if (!isAssistantTurn(turn)) continue;
-        const button = turn.querySelector(BUTTON_SELECTOR);
+        const button = pickPreferredButton(turn.querySelectorAll(BUTTON_SELECTOR));
         if (button) {
           return button;
         }
       }
-      const all = Array.from(document.querySelectorAll(BUTTON_SELECTOR));
-      for (let i = all.length - 1; i >= 0; i -= 1) {
-        const button = all[i];
+      const all = Array.from(document.querySelectorAll(BUTTON_SELECTOR)).filter((button) => {
         const turn = button?.closest?.(CONVERSATION_SELECTOR);
-        if (turn && isAssistantTurn(turn)) {
-          return button;
-        }
+        return Boolean(turn && isAssistantTurn(turn));
+      });
+      const button = pickPreferredButton(all);
+      if (button) {
+        return button;
       }
       return null;
     };
