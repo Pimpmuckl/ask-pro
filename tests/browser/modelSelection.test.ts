@@ -295,4 +295,5 @@ describe("browser model selection matchers", () => {
     expect(expression).toContain("key: 'Escape'");
     expect(expression).toContain("closeMenu();");
   });
+
 });

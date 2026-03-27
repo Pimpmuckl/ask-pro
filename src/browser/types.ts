@@ -23,6 +23,7 @@ export interface BrowserAutomationConfig {
   chromePath?: string | null;
   chromeCookiePath?: string | null;
   attachRunning?: boolean;
+  browserTabRef?: string | null;
   url?: string;
   chatgptUrl?: string | null;
   timeoutMs?: number;
@@ -117,6 +118,7 @@ export type ResolvedBrowserConfig = Required<
   chromePath?: string | null;
   chromeCookiePath?: string | null;
   attachRunning?: boolean;
+  browserTabRef?: string | null;
   desiredModel?: string | null;
   modelStrategy?: BrowserModelStrategy;
   thinkingTime?: ThinkingTimeLevel;
