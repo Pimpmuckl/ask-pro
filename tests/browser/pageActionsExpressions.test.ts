@@ -19,6 +19,14 @@ describe("browser automation expressions", () => {
     expect(expression).toContain(JSON.stringify(ASSISTANT_ROLE_SELECTOR));
   });
 
+  test("assistant extractor scans all assistant content blocks instead of the first markdown only", () => {
+    const expression = buildAssistantExtractorForTest("capture");
+    expect(expression).toContain("const selectors = [");
+    expect(expression).toContain("messageRoot.querySelectorAll(selector)");
+    expect(expression).toContain("'.markdown'");
+    expect(expression).not.toContain("messageRoot.querySelector('.markdown')");
+  });
+
   test("conversation debug expression references conversation selector", () => {
     const expression = buildConversationDebugExpressionForTest();
     expect(expression).toContain(JSON.stringify(CONVERSATION_TURN_SELECTOR));

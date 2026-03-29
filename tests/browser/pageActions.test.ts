@@ -241,6 +241,48 @@ describe("waitForAssistantResponse", () => {
     expect(result.meta).toEqual({ messageId: "mid", turnId: "tid" });
   });
 
+  test("does not complete on reasoning placeholder text", async () => {
+    vi.useFakeTimers();
+    try {
+      const placeholder = {
+        text: "Thought for 9 seconds",
+        html: "<p>Thought for 9 seconds</p>",
+        messageId: "mid",
+        turnId: "tid",
+      };
+      const evaluate = vi
+        .fn()
+        .mockImplementation(async (params: { expression?: string; awaitPromise?: boolean }) => {
+          if (params?.awaitPromise) {
+            return { result: { type: "object", value: placeholder } };
+          }
+          const expression = String(params?.expression ?? "");
+          if (expression.includes("extractAssistantTurn")) {
+            return { result: { value: placeholder } };
+          }
+          return { result: { value: false } };
+        });
+
+      const runtime = { evaluate } as unknown as ChromeClient["Runtime"];
+      const promise = waitForAssistantResponse(runtime, 300, logger);
+      const settled = promise.then(
+        (value) => ({ status: "resolved" as const, value }),
+        (error) => ({ status: "rejected" as const, error }),
+      );
+
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      const result = await settled;
+      expect(result.status).toBe("rejected");
+      if (result.status === "rejected") {
+        const message = result.error instanceof Error ? result.error.message : String(result.error);
+        expect(message).toMatch(/capture assistant response|response timeout|unable/i);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("aborts poller when evaluation wins (no background polling)", async () => {
     vi.useFakeTimers();
     try {
