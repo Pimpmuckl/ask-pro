@@ -81,7 +81,6 @@
   },
   "devDependencies": {
     "@anthropic-ai/tokenizer": "^0.0.4",
-    "@cdktf/node-pty-prebuilt-multiarch": "0.10.2",
     "@types/chrome-remote-interface": "^0.33.0",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^25.3.5",
@@ -114,7 +113,6 @@
       "devtools-protocol": "0.0.1595872"
     },
     "onlyBuiltDependencies": [
-      "@cdktf/node-pty-prebuilt-multiarch",
       "esbuild"
     ]
   }
