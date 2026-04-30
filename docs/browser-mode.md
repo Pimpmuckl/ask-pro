@@ -96,6 +96,7 @@ Notes:
 - `--browser-reuse-wait`: wait for a shared Chrome profile (DevToolsActivePort) to appear before launching a new Chrome. Helps multiple parallel runs reuse the same Chromium instance.
 - `--browser-profile-lock-timeout`: wait for the shared manual-login profile lock before sending, serializing parallel runs that share a Chrome profile.
 - `--browser-auto-reattach-delay`, `--browser-auto-reattach-interval`, `--browser-auto-reattach-timeout`: after a timeout, start periodic auto-reattach attempts (delay before first attempt, repeat interval, per-attempt timeout). This lets Oracle keep polling a finished Pro response without manual `oracle session` runs.
+- `--heartbeat`: browser mode uses this interval to emit long-run ChatGPT status. When ChatGPT exposes a Thinking/Reasoning disclosure, Oracle opens it and logs only liveness metadata such as sidecar presence, UI progress percentage, elapsed time, and last-change age. It does not log the reasoning text.
 - If an assistant response still times out (common with long Pro runs), the session stays running for reattach. Use `oracle session <id>` later to collect the final answer or increase `--browser-timeout`.
 - `--browser-model-strategy <select|current|ignore>`: control ChatGPT model selection. `select` (default) switches to the requested model; `current` keeps the active model and logs its label; `ignore` skips the picker entirely. (Ignored for Gemini web runs.)
 - `--browser-thinking-time <light|standard|extended|heavy>`: set the ChatGPT thinking-time intensity when the selected ChatGPT model exposes that level. Current GPT-5.5 Pro may appear as Pro Extended and exposes Standard/Extended; Thinking 5.5 may appear as Thinking Heavy. If a requested level is not present in the model's effort menu, Oracle logs the miss and continues with the active/default level. You can also set a default in `~/.oracle/config.json` via `browser.thinkingTime`.
@@ -264,7 +265,7 @@ This mode is ideal when you have a macOS VM (or spare Mac mini) logged into Chat
 - **Attach-running uploads** – `--browser-attach-running` currently supports inline file delivery only. If the run would require browser uploads, Oracle fails fast and points you back to the standard launcher path.
 - **Model picker drift** – we rely on heuristics to pick GPT-5.5 / GPT-5.4 / GPT-5.2 variants. If OpenAI changes the DOM we need to refresh the selectors quickly. Consider snapshot tests or a small “self check” command.
 - **Non-mac platforms** – window hiding uses AppleScript today; Linux/Windows just ignore the flag. We should detect platforms explicitly and document the behavior.
-- **Streaming UX** – browser runs cannot stream tokens, so we log a warning before launching Chrome. Investigate whether we can stream clipboard deltas via mutation observers for a closer UX.
+- **Streaming UX** – browser runs cannot stream tokens, so we emit heartbeat/status logs while waiting. Investigate whether we can stream clipboard deltas via mutation observers for a closer UX.
 
 ## Testing Notes
 
