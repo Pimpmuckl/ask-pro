@@ -70,6 +70,7 @@ export { parseDuration, delay, normalizeChatgptUrl, isTemporaryChatUrl } from ".
 export {
   formatThinkingLog,
   formatThinkingWaitingLog,
+  buildThinkingStatusExpressionForTest,
   readThinkingStatusForTest,
   sanitizeThinkingText,
   startThinkingStatusMonitorForTest,
