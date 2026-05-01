@@ -17,7 +17,7 @@ matters, writes the prompt, and lets `ask-pro` handle bundling, redaction,
 browser submission, auth gating, waiting, harvesting, and optional generated zip
 extraction.
 
-## Local Use
+## Install
 
 This package is not published yet. Use it from the repo while it is still in
 pre-release cleanup:
@@ -36,6 +36,43 @@ ask-pro "Review the staged implementation plan."
 ```
 
 Requires Node 24+.
+
+### Codex Plugin
+
+Installing the binary is separate from installing the Codex plugin. The plugin
+is what makes `$ask-pro` and `$ask-pro:ask-pro` appear in Codex.
+
+For local development, add this repo as a local plugin in your home marketplace:
+
+```json
+{
+  "name": "ask-pro",
+  "source": {
+    "source": "local",
+    "path": "../../Code/ask-pro"
+  },
+  "policy": {
+    "installation": "AVAILABLE",
+    "authentication": "ON_USE"
+  },
+  "category": "Productivity"
+}
+```
+
+Then enable it in your Codex config:
+
+```toml
+[plugins."ask-pro@jonat-local"]
+enabled = true
+```
+
+After restarting Codex, the skill list should include both `$ask-pro` and the
+plugin-qualified `$ask-pro:ask-pro`.
+
+An eventual `npm install -g ask_pro` will install the `ask-pro` CLI only. It
+will not automatically register the Codex plugin unless Codex adds an npm-based
+plugin installer or marketplace source. The npm tarball includes the plugin
+manifest and skill files so a future installer can consume them.
 
 ## First Login
 

@@ -12,6 +12,8 @@
 - Remove the old Oracle API provider, Gemini, MCP, TUI, bridge, remote-service,
   image, notifier, multi-model, and ad hoc browser-debug surfaces from V1.
 - Trim runtime dependencies to the ask-pro browser closure.
+- Include plugin manifest and skill files in the eventual npm tarball while
+  documenting that npm install does not auto-register Codex plugins.
 
 ### Added
 
