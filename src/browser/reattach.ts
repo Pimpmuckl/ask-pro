@@ -25,6 +25,7 @@ import {
   closeChromeGracefully,
 } from "./chromeLifecycle.js";
 import { resolveBrowserConfig } from "./config.js";
+import { defaultAskProBrowserProfileDir } from "./profilePaths.js";
 import { syncCookies } from "./cookies.js";
 import { CHATGPT_URL } from "./constants.js";
 import { cleanupStaleProfileState } from "./profileState.js";
@@ -245,9 +246,7 @@ async function resumeBrowserSessionViaNewChrome(
   const resolved = resolveBrowserConfig(config ?? {});
   const manualLogin = Boolean(resolved.manualLogin);
   const userDataDir = manualLogin
-    ? (runtime.userDataDir ??
-      resolved.manualLoginProfileDir ??
-      path.join(os.homedir(), ".ask-pro", "browser-profile"))
+    ? (runtime.userDataDir ?? resolved.manualLoginProfileDir ?? defaultAskProBrowserProfileDir())
     : await mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-"));
   if (manualLogin) {
     await mkdir(userDataDir, { recursive: true });

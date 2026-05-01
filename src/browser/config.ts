@@ -1,9 +1,8 @@
 import { CHATGPT_URL, DEFAULT_MODEL_STRATEGY, DEFAULT_MODEL_TARGET } from "./constants.js";
 import { normalizeBrowserModelStrategy } from "./modelStrategy.js";
+import { defaultAskProBrowserProfileDir } from "./profilePaths.js";
 import type { BrowserAutomationConfig, ResolvedBrowserConfig } from "./types.js";
 import { isTemporaryChatUrl, normalizeChatgptUrl } from "./utils.js";
-import os from "node:os";
-import path from "node:path";
 
 export const DEFAULT_BROWSER_CONFIG: ResolvedBrowserConfig = {
   chromeProfile: null,
@@ -82,7 +81,7 @@ export function resolveBrowserConfig(
   const resolvedProfileDir =
     config?.manualLoginProfileDir ??
     process.env.ASK_PRO_BROWSER_PROFILE_DIR ??
-    path.join(os.homedir(), ".ask-pro", "browser-profile");
+    defaultAskProBrowserProfileDir();
   return {
     ...DEFAULT_BROWSER_CONFIG,
     ...config,

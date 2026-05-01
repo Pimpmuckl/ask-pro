@@ -8,7 +8,7 @@
     "attachRunningChrome": true,
     "headlessAfterAuth": true,
     "timeoutMinutes": 180,
-    "profileDir": "~/.ask-pro/browser-profile"
+    "profileDir": "~/.agents/skills/ask-pro/browser-profile"
   },
   "context": {
     "mode": "focused",

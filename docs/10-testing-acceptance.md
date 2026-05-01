@@ -87,7 +87,7 @@ V1 is done when all are true:
 - `ask-pro` binary exists.
 - `$ask-pro` skill exists at `skills/ask-pro/SKILL.md`.
 - Normal path requires no preset/model flags.
-- Local/session naming uses `.ask-pro/` and `~/.ask-pro/`.
+- Local/session naming uses project `.ask-pro/` sessions and the persistent browser profile under `~/.agents/skills/ask-pro/`.
 - User-facing text does not say “smart guy”.
 - Browser automation can open or attach to ChatGPT.
 - Auth gate returns `NEEDS_USER_AUTH` instead of handling credentials.

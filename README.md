@@ -41,7 +41,7 @@ Requires Node 24+.
 `ask-pro` uses a dedicated Chrome profile at:
 
 ```text
-~/.ask-pro/browser-profile
+~/.agents/skills/ask-pro/browser-profile
 ```
 
 On the first browser run, ChatGPT may ask you to sign in, complete MFA, or clear

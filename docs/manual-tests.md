@@ -12,7 +12,7 @@ minutes or longer for Pro thinking.
 - ChatGPT login completed in the ask-pro browser profile:
 
   ```text
-  ~/.ask-pro/browser-profile
+  ~/.agents/skills/ask-pro/browser-profile
   ```
 
 - Do not click ChatGPT's `Answer now` button during Pro thinking. That skips the

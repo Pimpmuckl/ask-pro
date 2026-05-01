@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { BrowserAutomationError } from "../browser/errors.js";
+import { defaultAskProBrowserProfileDir } from "../browser/profilePaths.js";
 import { runBrowserMode, type BrowserRunResult } from "../browserMode.js";
 import { resumeBrowserSession } from "../browser/reattach.js";
 import type { BrowserLogger } from "../browser/types.js";
@@ -15,8 +15,7 @@ import {
 } from "./session.js";
 import { harvestLatestAssistantZip, writeResponseZipManifest } from "./responseZip.js";
 
-const ASK_PRO_HOME = path.join(os.homedir(), ".ask-pro");
-const ASK_PRO_BROWSER_PROFILE = path.join(ASK_PRO_HOME, "browser-profile");
+const ASK_PRO_BROWSER_PROFILE = defaultAskProBrowserProfileDir();
 const DEFAULT_TIMEOUT_MS = 180 * 60 * 1000;
 const MANUAL_LOGIN_WAIT_MS = 10 * 60 * 1000;
 

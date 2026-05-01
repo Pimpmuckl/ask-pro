@@ -9,7 +9,7 @@ Repo/package: ask_pro
 CLI binary:   ask-pro
 Agent skill:  $ask-pro
 Project dir:  .ask-pro/
-Global dir:   ~/.ask-pro/
+Global dir:   ~/.agents/skills/ask-pro/
 ```
 
 ## Avoid

@@ -51,7 +51,7 @@ ask-pro --resume <session-id>
   "sessionId": "2026-05-01-billing-webhook",
   "reason": "login_page_detected",
   "resumeCommand": "ask-pro --resume 2026-05-01-billing-webhook",
-  "browserProfile": "~/.ask-pro/browser-profile"
+  "browserProfile": "~/.agents/skills/ask-pro/browser-profile"
 }
 ```
 
@@ -82,7 +82,7 @@ Debug logs must redact cookies and bearer tokens.
 Preferred order:
 
 1. attach to running Chrome if available and user-approved
-2. persistent automation profile at `~/.ask-pro/browser-profile`
+2. persistent automation profile at `~/.agents/skills/ask-pro/browser-profile`
 3. headful manual-login browser
 4. headless only after auth has been verified
 

@@ -5,7 +5,7 @@
 ### Changed
 
 - Rename the shipped package and binary surface to `ask_pro` / `ask-pro`.
-- Narrow the product to browser-backed ChatGPT Pro escalation with project-local `.ask-pro/` sessions and a persistent `~/.ask-pro/browser-profile`.
+- Narrow the product to browser-backed ChatGPT Pro escalation with project-local `.ask-pro/` sessions and a persistent `~/.agents/skills/ask-pro/browser-profile`.
 - Remove the old API provider, Gemini, MCP, TUI, bridge, remote-service, image, notifier, and multi-model source/test surfaces from V1.
 - Trim runtime dependencies to the ask-pro browser closure.
 
@@ -21,6 +21,7 @@
 - Plugin: normalize the Codex plugin identity to `ask-pro` so the local marketplace/config can load the skill.
 - Plugin: add required YAML frontmatter to the `$ask-pro` skill so Codex can load it.
 - Plugin: tighten the `$ask-pro` skill text into a concise agent runbook.
+- Browser: move the default persistent Chrome profile to `~/.agents/skills/ask-pro/browser-profile`.
 - Browser: recognize ChatGPT's composer-pill model picker and Configure / `Pro thinking effort` dialog so current ChatGPT UI changes do not break Pro browser runs.
 - Browser: force an English browser locale for ask-pro runs to reduce selector drift from localized ChatGPT UI.
 - Browser: detect the current top-right temporary-chat control shape instead of relying only on URL flags.

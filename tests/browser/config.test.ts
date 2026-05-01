@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { resolveBrowserConfig } from "../../src/browser/config.js";
 import { CHATGPT_URL } from "../../src/browser/constants.js";
+import { defaultAskProBrowserProfileDir } from "../../src/browser/profilePaths.js";
 
 describe("resolveBrowserConfig", () => {
   test("returns defaults when config missing", () => {
@@ -10,6 +11,7 @@ describe("resolveBrowserConfig", () => {
     expect(resolved.cookieSync).toBe(!isWindows);
     expect(resolved.headless).toBe(false);
     expect(resolved.manualLogin).toBe(isWindows);
+    if (isWindows) expect(resolved.manualLoginProfileDir).toBe(defaultAskProBrowserProfileDir());
     expect(resolved.profileLockTimeoutMs).toBe(300_000);
     expect(resolved.manualLoginWaitMs).toBe(1_200_000);
     expect(resolved.acceptLanguage).toBe("en-US,en");
@@ -42,6 +44,12 @@ describe("resolveBrowserConfig", () => {
     expect(resolved.manualLoginWaitMs).toBe(12_000);
     expect(resolved.acceptLanguage).toBe("en-GB,en");
     expect(resolved.debug).toBe(true);
+  });
+
+  test("uses the agent skill profile for manual login by default", () => {
+    const resolved = resolveBrowserConfig({ manualLogin: true });
+
+    expect(resolved.manualLoginProfileDir).toBe(defaultAskProBrowserProfileDir());
   });
 
   test("rejects temporary chat URLs when desiredModel is Pro", () => {

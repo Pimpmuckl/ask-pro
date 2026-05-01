@@ -34,6 +34,7 @@
     "dist/src/browser/liveTabs.js",
     "dist/src/browser/modelStrategy.js",
     "dist/src/browser/pageActions.js",
+    "dist/src/browser/profilePaths.js",
     "dist/src/browser/profileState.js",
     "dist/src/browser/providerDomFlow.js",
     "dist/src/browser/reattach.js",
