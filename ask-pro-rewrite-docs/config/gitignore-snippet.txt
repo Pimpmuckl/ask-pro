@@ -1,0 +1,8 @@
+# ask_pro / ask-pro local state
+.ask-pro/sessions/
+.ask-pro/tmp/
+.ask-pro/downloads/
+
+# never commit generated context bundles
+CONTEXT.zip
+ask-pro-response.zip

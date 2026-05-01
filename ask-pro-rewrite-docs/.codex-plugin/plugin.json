@@ -1,0 +1,12 @@
+{
+  "name": "ask_pro",
+  "version": "0.1.0",
+  "description": "Minimal browser-backed ChatGPT Pro escalation workflow for agents via $ask-pro.",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "ask_pro",
+    "shortDescription": "$ask-pro browser-backed Pro escalation for hard engineering questions",
+    "category": "Productivity",
+    "capabilities": ["Read", "Write"]
+  }
+}

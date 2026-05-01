@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "browser": {
+    "provider": "chatgpt",
+    "targetModel": "gpt-5.5-pro",
+    "thinking": "deepest-compatible",
+    "manualLogin": true,
+    "attachRunningChrome": true,
+    "headlessAfterAuth": true,
+    "timeoutMinutes": 180,
+    "profileDir": "~/.ask-pro/browser-profile"
+  },
+  "context": {
+    "mode": "focused",
+    "redaction": "strict",
+    "projectSessionDir": ".ask-pro/sessions",
+    "defaultExcludes": [
+      ".env",
+      ".env.*",
+      "**/*.pem",
+      "**/*.key",
+      "node_modules/**",
+      "dist/**",
+      "build/**",
+      ".next/**",
+      "target/**",
+      "vendor/**",
+      ".git/**"
+    ],
+    "maxZipBytes": 524288000
+  },
+  "output": {
+    "preferResponseZip": true,
+    "expectedZipName": "ask-pro-response.zip",
+    "markdownFallback": true,
+    "neverExecuteGeneratedScripts": true
+  }
+}
