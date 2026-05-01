@@ -1,4 +1,16 @@
-const CLICK_TYPES = ["pointerdown", "mousedown", "pointerup", "mouseup", "click"] as const;
+const CLICK_TYPES = [
+  "pointerover",
+  "pointerenter",
+  "mouseover",
+  "mouseenter",
+  "pointermove",
+  "mousemove",
+  "pointerdown",
+  "mousedown",
+  "pointerup",
+  "mouseup",
+  "click",
+] as const;
 
 export function buildClickDispatcher(functionName = "dispatchClickSequence"): string {
   const typesLiteral = JSON.stringify(CLICK_TYPES);

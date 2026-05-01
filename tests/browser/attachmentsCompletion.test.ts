@@ -26,13 +26,13 @@ describe("attachment completion fallbacks", () => {
             uploading: false,
             filesAttached: true,
             attachedNames: [],
-            inputNames: ["oracle-attach-verify.txt"],
+            inputNames: ["ask-pro-attach-verify.txt"],
           },
         },
       }),
     } as unknown as ChromeClient["Runtime"];
 
-    const promise = waitForAttachmentCompletion(runtime, 10_000, ["oracle-attach-verify.txt"]);
+    const promise = waitForAttachmentCompletion(runtime, 10_000, ["ask-pro-attach-verify.txt"]);
     await vi.advanceTimersByTimeAsync(2_000);
     await expect(promise).resolves.toBeUndefined();
     useRealTime();
@@ -49,13 +49,13 @@ describe("attachment completion fallbacks", () => {
             uploading: true,
             filesAttached: false,
             attachedNames: [],
-            inputNames: ["oracle-attach-verify.txt"],
+            inputNames: ["ask-pro-attach-verify.txt"],
           },
         },
       }),
     } as unknown as ChromeClient["Runtime"];
 
-    const promise = waitForAttachmentCompletion(runtime, 10_000, ["oracle-attach-verify.txt"]);
+    const promise = waitForAttachmentCompletion(runtime, 10_000, ["ask-pro-attach-verify.txt"]);
     await vi.advanceTimersByTimeAsync(5_000);
     await expect(promise).resolves.toBeUndefined();
     useRealTime();
@@ -72,13 +72,13 @@ describe("attachment completion fallbacks", () => {
             uploading: false,
             filesAttached: true,
             attachedNames: [],
-            inputNames: ["oracle-attach-verify.txt"],
+            inputNames: ["ask-pro-attach-verify.txt"],
           },
         },
       }),
     } as unknown as ChromeClient["Runtime"];
 
-    const promise = waitForAttachmentCompletion(runtime, 10_000, ["oracle-attach-verify.txt"]);
+    const promise = waitForAttachmentCompletion(runtime, 10_000, ["ask-pro-attach-verify.txt"]);
     await vi.advanceTimersByTimeAsync(2_000);
     await expect(promise).resolves.toBeUndefined();
     useRealTime();
@@ -103,7 +103,7 @@ describe("attachment completion fallbacks", () => {
       }),
     } as unknown as ChromeClient["Runtime"];
 
-    const promise = waitForAttachmentCompletion(runtime, 10_000, ["oracle-attach-verify.txt"]);
+    const promise = waitForAttachmentCompletion(runtime, 10_000, ["ask-pro-attach-verify.txt"]);
     await vi.advanceTimersByTimeAsync(2_000);
     await expect(promise).resolves.toBeUndefined();
     useRealTime();
@@ -128,7 +128,7 @@ describe("attachment completion fallbacks", () => {
       }),
     } as unknown as ChromeClient["Runtime"];
 
-    const promise = waitForAttachmentCompletion(runtime, 800, ["oracle-attach-verify.txt"]);
+    const promise = waitForAttachmentCompletion(runtime, 800, ["ask-pro-attach-verify.txt"]);
     const assertion = expect(promise).rejects.toThrow(/did not finish uploading/i);
     await vi.advanceTimersByTimeAsync(2_000);
     await assertion;
@@ -152,7 +152,7 @@ describe("attachment completion fallbacks", () => {
       }),
     } as unknown as ChromeClient["Runtime"];
 
-    const promise = waitForAttachmentCompletion(runtime, 800, ["oracle-attach-verify.txt"]);
+    const promise = waitForAttachmentCompletion(runtime, 800, ["ask-pro-attach-verify.txt"]);
     const assertion = expect(promise).rejects.toThrow(/did not finish uploading/i);
     await vi.advanceTimersByTimeAsync(2_000);
     await assertion;
@@ -167,7 +167,7 @@ describe("sent turn attachment verification", () => {
         result: {
           value: {
             ok: true,
-            text: "You said:\noracle-attach-verify.txt\nDocument",
+            text: "You said:\nask-pro-attach-verify.txt\nDocument",
             attrs: [],
             hasAttachmentUi: true,
           },
@@ -176,7 +176,7 @@ describe("sent turn attachment verification", () => {
     } as unknown as ChromeClient["Runtime"];
 
     await expect(
-      waitForUserTurnAttachments(runtime, ["oracle-attach-verify.txt"], 1000),
+      waitForUserTurnAttachments(runtime, ["ask-pro-attach-verify.txt"], 1000),
     ).resolves.toBe(true);
   });
 
@@ -196,7 +196,7 @@ describe("sent turn attachment verification", () => {
       }),
     } as unknown as ChromeClient["Runtime"];
 
-    const promise = waitForUserTurnAttachments(runtime, ["oracle-attach-verify.txt"], 600);
+    const promise = waitForUserTurnAttachments(runtime, ["ask-pro-attach-verify.txt"], 600);
     const assertion = expect(promise).rejects.toThrow(/Attachment was not present/i);
     await vi.advanceTimersByTimeAsync(2_000);
     await assertion;
@@ -219,7 +219,7 @@ describe("sent turn attachment verification", () => {
       }),
     } as unknown as ChromeClient["Runtime"];
 
-    const promise = waitForUserTurnAttachments(runtime, ["oracle-attach-verify.txt"], 600);
+    const promise = waitForUserTurnAttachments(runtime, ["ask-pro-attach-verify.txt"], 600);
     await vi.advanceTimersByTimeAsync(2_000);
     await expect(promise).resolves.toBe(false);
     useRealTime();
@@ -244,7 +244,7 @@ describe("sent turn attachment verification", () => {
     await expect(
       waitForUserTurnAttachments(
         runtime,
-        ["oracle-attach-verify-a.txt", "oracle-attach-verify-b.txt"],
+        ["ask-pro-attach-verify-a.txt", "ask-pro-attach-verify-b.txt"],
         1000,
       ),
     ).resolves.toBe(true);
@@ -265,7 +265,7 @@ describe("sent turn attachment verification", () => {
 
     const promise = waitForUserTurnAttachments(
       runtime,
-      ["oracle-attach-verify.txt"],
+      ["ask-pro-attach-verify.txt"],
       600,
       undefined,
       {
@@ -285,7 +285,7 @@ describe("sent turn attachment verification", () => {
         result: {
           value: {
             ok: true,
-            text: "You said: unrelated prompt oracle-attach-verify.txt",
+            text: "You said: unrelated prompt ask-pro-attach-verify.txt",
             attrs: [],
             hasAttachmentUi: true,
             promptMatches: false,
@@ -296,7 +296,7 @@ describe("sent turn attachment verification", () => {
 
     const promise = waitForUserTurnAttachments(
       runtime,
-      ["oracle-attach-verify.txt"],
+      ["ask-pro-attach-verify.txt"],
       600,
       undefined,
       {
@@ -325,7 +325,7 @@ describe("sent turn attachment verification", () => {
 
     const promise = waitForUserTurnAttachments(
       runtime,
-      ["oracle-attach-verify.txt"],
+      ["ask-pro-attach-verify.txt"],
       600,
       undefined,
       {

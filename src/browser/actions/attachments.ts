@@ -628,8 +628,8 @@ export async function uploadAttachmentFile(
           (local ? 40 : 0) +
           (visible ? 30 : -200) +
           (!imageOnly ? 30 : isImageAttachment ? 20 : 5);
-        el.setAttribute('data-oracle-upload-candidate', 'true');
-        el.setAttribute('data-oracle-upload-idx', String(idx));
+        el.setAttribute('data-ask-pro-upload-candidate', 'true');
+        el.setAttribute('data-ask-pro-upload-idx', String(idx));
         return { idx: idx++, score, imageOnly };
       });
 
@@ -757,7 +757,7 @@ export async function uploadAttachmentFile(
   };
 
   const inputSnapshotFor = (idx: number) => `(() => {
-    const input = document.querySelector('input[type="file"][data-oracle-upload-idx="${idx}"]');
+    const input = document.querySelector('input[type="file"][data-ask-pro-upload-idx="${idx}"]');
     if (!(input instanceof HTMLInputElement)) {
       return { names: [], value: '', count: 0 };
     }
@@ -893,7 +893,7 @@ export async function uploadAttachmentFile(
         return /\\buploading\\b/.test(text) || /\\bprocessing\\b/.test(text);
       });
     });
-    const input = document.querySelector('input[type="file"][data-oracle-upload-idx="${idx}"]');
+    const input = document.querySelector('input[type="file"][data-ask-pro-upload-idx="${idx}"]');
     const inputNames =
       input instanceof HTMLInputElement
         ? Array.from(input.files || []).map((f) => f?.name ?? '').filter(Boolean)
@@ -946,7 +946,7 @@ export async function uploadAttachmentFile(
       }
       const resultNode = await dom.querySelector({
         nodeId: documentNode.root.nodeId,
-        selector: `input[type="file"][data-oracle-upload-idx="${idx}"]`,
+        selector: `input[type="file"][data-ask-pro-upload-idx="${idx}"]`,
       });
       if (!resultNode?.nodeId) {
         continue;
@@ -1042,7 +1042,7 @@ export async function uploadAttachmentFile(
           if (mode === "set") {
             await dom.setFileInputFiles({ nodeId: resultNode.nodeId, files: [attachment.path] });
           } else {
-            const selector = `input[type="file"][data-oracle-upload-idx="${idx}"]`;
+            const selector = `input[type="file"][data-ask-pro-upload-idx="${idx}"]`;
             try {
               await transferAttachmentViaDataTransfer(runtime, attachment, selector);
             } catch (error) {
@@ -1075,7 +1075,7 @@ export async function uploadAttachmentFile(
         await runtime
           .evaluate({
             expression: `(() => {
-              const input = document.querySelector('input[type="file"][data-oracle-upload-idx="${idx}"]');
+              const input = document.querySelector('input[type="file"][data-ask-pro-upload-idx="${idx}"]');
               if (!(input instanceof HTMLInputElement)) return false;
               try {
                 input.dispatchEvent(new Event('input', { bubbles: true }));

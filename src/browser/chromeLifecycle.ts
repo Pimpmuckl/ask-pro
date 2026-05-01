@@ -20,7 +20,11 @@ export async function launchChrome(
   const connectHost = resolveRemoteDebugHost();
   const debugBindAddress = connectHost && connectHost !== "127.0.0.1" ? "0.0.0.0" : connectHost;
   const debugPort = config.debugPort ?? parseDebugPortEnv();
-  const chromeFlags = buildChromeFlags(config.headless ?? false, debugBindAddress);
+  const chromeFlags = buildChromeFlags(
+    config.headless ?? false,
+    debugBindAddress,
+    config.acceptLanguage,
+  );
   const usePatchedLauncher = Boolean(connectHost && connectHost !== "127.0.0.1");
   const launcher = usePatchedLauncher
     ? await launchWithCustomHost({
@@ -81,13 +85,15 @@ export function registerTerminationHooks(
         // Ensure reattach hints are written before we exit.
         await opts?.emitRuntimeHint?.().catch(() => undefined);
         if (inFlight) {
-          logger('Session still in flight; reattach with "oracle session <slug>" to continue.');
+          logger(
+            'Session still in flight; reattach with "ask-pro --resume <session-id>" to continue.',
+          );
         }
       } else {
         try {
-          await chrome.kill();
+          await closeChromeGracefully(chrome, logger);
         } catch {
-          // ignore kill failures
+          // ignore close failures
         }
         if (opts?.preserveUserDataDir) {
           // Preserve the profile directory (manual login), but clear reattach hints so we don't
@@ -120,6 +126,58 @@ export function registerTerminationHooks(
       process.removeListener(signal, handleSignal);
     }
   };
+}
+
+export async function closeChromeGracefully(
+  chrome: LaunchedChrome & { host?: string },
+  logger?: BrowserLogger,
+): Promise<void> {
+  const port = chrome.port;
+  const host = chrome.host ?? "127.0.0.1";
+  if (port) {
+    try {
+      const version = (await CDP.Version({ host, port })) as { webSocketDebuggerUrl?: string };
+      const target = version.webSocketDebuggerUrl;
+      const client = (await CDP(target ? { target, local: true } : { host, port })) as ChromeClient;
+      try {
+        await client.Browser?.close?.();
+      } finally {
+        await client.close().catch(() => undefined);
+      }
+      await waitForChromeExit(chrome.pid, 2500);
+      if (!chrome.pid || !isPidAlive(chrome.pid)) {
+        return;
+      }
+      logger?.("Chrome did not exit after Browser.close; terminating process.");
+    } catch (error) {
+      if (logger?.verbose) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger(`Graceful Chrome close failed (${message}); terminating process.`);
+      }
+    }
+  }
+  await chrome.kill();
+}
+
+async function waitForChromeExit(pid: number | undefined, timeoutMs: number): Promise<void> {
+  if (!pid) {
+    await delay(500);
+    return;
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isPidAlive(pid)) return;
+    await delay(100);
+  }
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function hideChromeWindow(
@@ -357,7 +415,7 @@ async function connectToBrowserWebSocket(
         timeoutId = setTimeout(() => {
           reject(
             new Error(
-              `Oracle waited ${formatApprovalWait(approvalWaitMs)} for Chrome remote debugging approval at ${host}:${port}. Allow the Chrome prompt or retry after toggling remote debugging.`,
+              `ask-pro waited ${formatApprovalWait(approvalWaitMs)} for Chrome remote debugging approval at ${host}:${port}. Allow the Chrome prompt or retry after toggling remote debugging.`,
             ),
           );
         }, approvalWaitMs);
@@ -528,7 +586,12 @@ export async function closeTab(
   }
 }
 
-function buildChromeFlags(headless: boolean, debugBindAddress?: string | null): string[] {
+function buildChromeFlags(
+  headless: boolean,
+  debugBindAddress?: string | null,
+  acceptLanguage = "en-US,en",
+): string[] {
+  const primaryLanguage = acceptLanguage.split(",", 1)[0]?.trim() || "en-US";
   const flags = [
     "--disable-background-networking",
     "--disable-background-timer-throttling",
@@ -546,8 +609,8 @@ function buildChromeFlags(headless: boolean, debugBindAddress?: string | null): 
     "--disable-features=TranslateUI,AutomationControlled",
     "--mute-audio",
     "--window-size=1280,720",
-    "--lang=en-US",
-    "--accept-lang=en-US,en",
+    `--lang=${primaryLanguage}`,
+    `--accept-lang=${acceptLanguage}`,
   ];
 
   if (process.platform !== "win32" && !isWsl()) {

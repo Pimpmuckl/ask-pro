@@ -1,6 +1,5 @@
 import CDP from "chrome-remote-interface";
 import { createHash } from "node:crypto";
-import type { SessionMetadata, BrowserHarvestState } from "../sessionStore.js";
 import {
   ANSWER_SELECTORS,
   ASSISTANT_ROLE_SELECTOR,
@@ -15,6 +14,30 @@ import { delay } from "./utils.js";
 
 export const DEFAULT_REMOTE_CHROME_HOST = "127.0.0.1";
 export const DEFAULT_REMOTE_CHROME_PORT = 9222;
+export type BrowserHarvestState = "running" | "completed" | "stalled" | "detached";
+
+export interface BrowserTabSessionMetadata {
+  browser?: {
+    runtime?: {
+      chromePort?: number;
+      chromeHost?: string;
+      chromeTargetId?: string;
+      tabUrl?: string;
+      conversationId?: string;
+    };
+    config?: {
+      remoteChrome?: {
+        host?: string;
+        port?: number;
+      } | null;
+    };
+    harvest?: {
+      targetId?: string;
+      url?: string;
+      conversationId?: string;
+    };
+  };
+}
 
 const LOGIN_CTA_PATTERN =
   /\b(log in|login|sign up|sign in|continue with google|continue with microsoft)\b/i;
@@ -422,7 +445,7 @@ function resolveChatGptTabFromSummaries(
     throw new Error(`Multiple ChatGPT tabs match "${trimmedRef}":\n${details}`);
   }
   throw new Error(
-    `No ChatGPT tab matched "${trimmedRef}". Use "oracle-tabs" or "oracle status --browser-tabs" to inspect live targets.`,
+    `No ChatGPT tab matched "${trimmedRef}". Inspect the saved ask-pro browser metadata or pass a live tab ref.`,
   );
 }
 
@@ -551,7 +574,10 @@ export function formatBrowserTabState(
   return tab.state ?? classifyTabState(tab);
 }
 
-export function sessionMatchesTab(meta: SessionMetadata, tab: Partial<ChatGptTabSummary>): boolean {
+export function sessionMatchesTab(
+  meta: BrowserTabSessionMetadata,
+  tab: Partial<ChatGptTabSummary>,
+): boolean {
   const runtime = meta?.browser?.runtime ?? {};
   const harvest = meta?.browser?.harvest ?? {};
   const conversationId = tab.conversationId ?? extractConversationIdFromUrl(tab.url ?? "");

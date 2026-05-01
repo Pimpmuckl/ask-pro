@@ -41,6 +41,8 @@ export const DEFAULT_BROWSER_CONFIG: ResolvedBrowserConfig = {
   manualLogin: false,
   manualLoginProfileDir: null,
   manualLoginCookieSync: false,
+  manualLoginWaitMs: 20 * 60_000,
+  acceptLanguage: "en-US,en",
 };
 
 export function resolveBrowserConfig(
@@ -79,8 +81,8 @@ export function resolveBrowserConfig(
   const cookieSyncDefault = isWindows ? false : DEFAULT_BROWSER_CONFIG.cookieSync;
   const resolvedProfileDir =
     config?.manualLoginProfileDir ??
-    process.env.ORACLE_BROWSER_PROFILE_DIR ??
-    path.join(os.homedir(), ".oracle", "browser-profile");
+    process.env.ASK_PRO_BROWSER_PROFILE_DIR ??
+    path.join(os.homedir(), ".ask-pro", "browser-profile");
   return {
     ...DEFAULT_BROWSER_CONFIG,
     ...config,
@@ -128,6 +130,8 @@ export function resolveBrowserConfig(
     manualLoginProfileDir: manualLogin ? resolvedProfileDir : null,
     manualLoginCookieSync:
       config?.manualLoginCookieSync ?? DEFAULT_BROWSER_CONFIG.manualLoginCookieSync,
+    manualLoginWaitMs: config?.manualLoginWaitMs ?? DEFAULT_BROWSER_CONFIG.manualLoginWaitMs,
+    acceptLanguage: config?.acceptLanguage ?? DEFAULT_BROWSER_CONFIG.acceptLanguage,
   };
 }
 

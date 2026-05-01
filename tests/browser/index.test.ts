@@ -4,7 +4,7 @@ import {
   runSubmissionWithRecoveryForTest,
   shouldPreserveBrowserOnErrorForTest,
 } from "../../src/browser/index.js";
-import { BrowserAutomationError } from "../../src/oracle/errors.js";
+import { BrowserAutomationError } from "../../src/browser/errors.js";
 
 describe("shouldPreserveBrowserOnErrorForTest", () => {
   test("preserves the browser for headful cloudflare challenge errors", () => {
@@ -33,9 +33,7 @@ describe("runSubmissionWithRecoveryForTest", () => {
   test("preserves prompt-too-large fallback after a dead-composer retry", async () => {
     const submit = vi
       .fn()
-      .mockRejectedValueOnce(
-        new BrowserAutomationError("dead composer", { code: "dead-composer" }),
-      )
+      .mockRejectedValueOnce(new BrowserAutomationError("dead composer", { code: "dead-composer" }))
       .mockRejectedValueOnce(
         new BrowserAutomationError("prompt too large", { code: "prompt-too-large" }),
       )
@@ -69,11 +67,9 @@ describe("runSubmissionWithRecoveryForTest", () => {
     expect(prepareFallbackSubmission).toHaveBeenCalledTimes(1);
     expect(submit).toHaveBeenNthCalledWith(1, "inline prompt", []);
     expect(submit).toHaveBeenNthCalledWith(2, "inline prompt", []);
-    expect(submit).toHaveBeenNthCalledWith(
-      3,
-      "fallback prompt",
-      [expect.objectContaining({ displayPath: "fallback.txt" })],
-    );
+    expect(submit).toHaveBeenNthCalledWith(3, "fallback prompt", [
+      expect.objectContaining({ displayPath: "fallback.txt" }),
+    ]);
   });
 
   test("throws when prompt-too-large happens again after fallback", async () => {

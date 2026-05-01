@@ -10,6 +10,6 @@
     "removeComments": false,
     "allowImportingTsExtensions": false
   },
-  "include": ["bin/**/*.ts", "scripts/**/*.ts", "src/**/*.ts", "types/**/*.d.ts"],
+  "include": ["bin/ask-pro-cli.ts", "scripts/run-cli.ts"],
   "exclude": ["tests", "dist", "node_modules", ".bun-check"]
 }

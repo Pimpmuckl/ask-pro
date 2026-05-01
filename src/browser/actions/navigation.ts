@@ -2,7 +2,7 @@ import type { ChromeClient, BrowserLogger } from "../types.js";
 import { CLOUDFLARE_SCRIPT_SELECTOR, CLOUDFLARE_TITLE, INPUT_SELECTORS } from "../constants.js";
 import { delay } from "../utils.js";
 import { logDomFailure } from "../domDebug.js";
-import { BrowserAutomationError } from "../../oracle/errors.js";
+import { BrowserAutomationError } from "../errors.js";
 
 export function installJavaScriptDialogAutoDismissal(
   Page: ChromeClient["Page"],

@@ -2,7 +2,6 @@ import CDP from "chrome-remote-interface";
 import os from "node:os";
 import path from "node:path";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
-import type { BrowserRuntimeMetadata, BrowserSessionConfig } from "../sessionStore.js";
 import {
   waitForAssistantResponse,
   captureAssistantMarkdown,
@@ -11,13 +10,19 @@ import {
   ensureLoggedIn,
   ensurePromptReady,
 } from "./pageActions.js";
-import type { BrowserLogger, ChromeClient } from "./types.js";
+import type {
+  BrowserAutomationConfig,
+  BrowserLogger,
+  BrowserRuntimeMetadata,
+  ChromeClient,
+} from "./types.js";
 import {
   launchChrome,
   connectToChrome,
   hideChromeWindow,
   connectToRemoteChromeTarget,
   listRemoteChromeTargets,
+  closeChromeGracefully,
 } from "./chromeLifecycle.js";
 import { resolveBrowserConfig } from "./config.js";
 import { syncCookies } from "./cookies.js";
@@ -38,6 +43,8 @@ import {
   alignPromptEchoMarkdown,
   type TargetInfoLite,
 } from "./reattachHelpers.js";
+
+type BrowserSessionConfig = BrowserAutomationConfig;
 export interface ReattachDeps {
   listTargets?: () => Promise<TargetInfoLite[]>;
   connect?: (options?: unknown) => Promise<ChromeClient>;
@@ -240,8 +247,8 @@ async function resumeBrowserSessionViaNewChrome(
   const userDataDir = manualLogin
     ? (runtime.userDataDir ??
       resolved.manualLoginProfileDir ??
-      path.join(os.homedir(), ".oracle", "browser-profile"))
-    : await mkdtemp(path.join(os.tmpdir(), "oracle-reattach-"));
+      path.join(os.homedir(), ".ask-pro", "browser-profile"))
+    : await mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-"));
   if (manualLogin) {
     await mkdir(userDataDir, { recursive: true });
   }
@@ -333,9 +340,9 @@ async function resumeBrowserSessionViaNewChrome(
   }
   if (!resolved.keepBrowser) {
     try {
-      await chrome.kill();
+      await closeChromeGracefully(chrome, logger);
     } catch {
-      // ignore
+      // ignore close failures
     }
     if (manualLogin) {
       await cleanupStaleProfileState(userDataDir, logger, { lockRemovalMode: "never" }).catch(

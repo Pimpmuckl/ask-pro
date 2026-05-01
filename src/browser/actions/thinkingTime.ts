@@ -1,5 +1,4 @@
-import type { ChromeClient, BrowserLogger } from "../types.js";
-import type { ThinkingTimeLevel } from "../../oracle/types.js";
+import type { ChromeClient, BrowserLogger, ThinkingTimeLevel } from "../types.js";
 import {
   MENU_CONTAINER_SELECTOR,
   MENU_ITEM_SELECTOR,
@@ -239,6 +238,102 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
     }
 
     const TRAILING_SELECTOR = '[data-model-picker-thinking-effort-action="true"]';
+    const hasTrailingEffortControls = () => document.querySelectorAll(TRAILING_SELECTOR).length > 0;
+    const findIntelligenceDialog = () => {
+      const dialogs = Array.from(document.querySelectorAll('[role="dialog"], [data-state="open"]'));
+      return dialogs.find((dialog) => {
+        const text = normalize(dialog.textContent ?? '');
+        return text.includes('model') && text.includes('pro thinking effort');
+      }) ?? null;
+    };
+    const interactiveIn = (root) =>
+      Array.from(root.querySelectorAll('button, [role="button"], [role="radio"], [role="combobox"], [role="option"], [role="menuitemradio"], [role="menuitem"]'));
+    const findProModelRow = (dialog) =>
+      interactiveIn(dialog).find((node) => {
+        const text = normalize(node.textContent ?? '');
+        const role = node.getAttribute?.('role') ?? '';
+        return role === 'radio' && text.includes('pro') && !text.includes('thinking effort');
+      }) ?? null;
+    const findDialogEffortControl = (dialog) =>
+      interactiveIn(dialog).find((node) => {
+        const text = normalize(node.textContent ?? '');
+        const role = node.getAttribute?.('role') ?? '';
+        const isEffortValue = EFFORT_LABELS.has(text) || ['standard', 'extended'].includes(text);
+        if (role === 'combobox' && isEffortValue) return true;
+        return false;
+      }) ?? null;
+    const findConfigureOption = () =>
+      Array.from(document.querySelectorAll('[data-testid="model-configure-modal"], [role="menuitem"], button, [role="button"]'))
+        .find((node) => {
+          const text = normalize(node.textContent ?? '');
+          const testId = normalize(node.getAttribute?.('data-testid') ?? '');
+          return testId.includes('model configure modal') || text === 'configure' || text === 'configure...';
+        }) ?? null;
+    const findOpenEffortOption = () => {
+      const candidates = Array.from(document.querySelectorAll('[role="option"], [role="menuitemradio"], [role="menuitem"], [role="radio"], button'));
+      return candidates.find((node) => matchesLevel(node.textContent ?? '') || matchesLevel(node.getAttribute?.('aria-label') ?? '')) ?? null;
+    };
+
+    const modelBtn = findModelButton();
+    if (!modelBtn) {
+      return { status: 'chip-not-found' };
+    }
+
+    let intelligenceDialog = findIntelligenceDialog();
+    if (!intelligenceDialog) {
+      dispatchClickSequence(modelBtn);
+      await sleep(INITIAL_WAIT_MS);
+      const dialogDeadline = performance.now() + MAX_WAIT_MS;
+      while (performance.now() < dialogDeadline) {
+        intelligenceDialog = findIntelligenceDialog();
+        if (intelligenceDialog) break;
+        const configure = findConfigureOption();
+        if (configure) {
+          dispatchClickSequence(configure);
+          await sleep(STEP_WAIT_MS);
+          intelligenceDialog = findIntelligenceDialog();
+          if (intelligenceDialog) break;
+        }
+        if (hasTrailingEffortControls()) break;
+        await sleep(100);
+      }
+    }
+
+    if (intelligenceDialog) {
+      const proRow = findProModelRow(intelligenceDialog);
+      if (proRow && !optionIsSelected(proRow)) {
+        dispatchClickSequence(proRow);
+        await sleep(STEP_WAIT_MS);
+      }
+      const effortControl = findDialogEffortControl(intelligenceDialog);
+      if (effortControl) {
+        const currentLabel = effortControl.textContent?.trim?.() || null;
+        if (currentLabel && matchesLevel(currentLabel)) {
+          closeOpenMenus();
+          return { status: 'already-selected', label: currentLabel };
+        }
+        dispatchClickSequence(effortControl);
+        await sleep(STEP_WAIT_MS);
+        let targetOption = null;
+        const optionDeadline = performance.now() + MAX_WAIT_MS;
+        while (performance.now() < optionDeadline) {
+          targetOption = findOpenEffortOption();
+          if (targetOption) break;
+          await sleep(100);
+        }
+        if (!targetOption) {
+          closeOpenMenus();
+          return { status: 'option-not-found' };
+        }
+        const already = optionIsSelected(targetOption);
+        const label = targetOption.textContent?.trim?.() || null;
+        dispatchClickSequence(targetOption);
+        await sleep(STEP_WAIT_MS);
+        closeOpenMenus();
+        return { status: already ? 'already-selected' : 'switched', label };
+      }
+    }
+
     const findTrailingButtons = () => Array.from(document.querySelectorAll(TRAILING_SELECTOR));
     const modelLabel = () => normalize(modelBtn.textContent ?? '');
     const findEffortRow = (trailing) =>
@@ -272,11 +367,6 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       if (best && best.score > 0) return best.trailing;
       return null;
     };
-
-    const modelBtn = findModelButton();
-    if (!modelBtn) {
-      return { status: 'chip-not-found' };
-    }
 
     if (modelBtn.getAttribute('aria-expanded') !== 'true') {
       dispatchClickSequence(modelBtn);

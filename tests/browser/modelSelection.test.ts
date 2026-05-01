@@ -205,6 +205,29 @@ describe("browser model selection matchers", () => {
     expect(result).toEqual({ status: "switched", label: "GPT-5.5 Pro" });
   });
 
+  it("selects GPT-5.5 Pro from the current composer pill without aria-haspopup", async () => {
+    const modelButton = new FakeElement("Instant", {
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const option = new FakeElement(
+      "Pro• Extended",
+      { "data-testid": "model-switcher-gpt-5-5-pro" },
+      [],
+      () => {
+        modelButton.textContent = "GPT-5.5 Pro";
+        option.setAttribute("aria-checked", "true");
+      },
+    );
+    const menu = new FakeElement("", { role: "menu" }, [option]);
+
+    const result = await runModelSelectionExpression(
+      "gpt-5.5-pro",
+      new FakeDocument([modelButton], [menu]),
+    );
+
+    expect(result).toEqual({ status: "switched", label: "GPT-5.5 Pro" });
+  });
+
   it("selects GPT-5.5 Pro from the current visible Pro Extended label", async () => {
     const modelButton = new FakeElement("Standard", {
       "aria-haspopup": "menu",
@@ -295,5 +318,4 @@ describe("browser model selection matchers", () => {
     expect(expression).toContain("key: 'Escape'");
     expect(expression).toContain("closeMenu();");
   });
-
 });

@@ -82,7 +82,7 @@ export const SEND_BUTTON_SELECTORS = [
 ];
 export const SEND_BUTTON_SELECTOR = SEND_BUTTON_SELECTORS[0];
 export const MODEL_BUTTON_SELECTOR =
-  '[data-testid="model-switcher-dropdown-button"], button.__composer-pill[aria-haspopup="menu"]';
+  '[data-testid="model-switcher-dropdown-button"], button.__composer-pill[aria-haspopup="menu"], button.__composer-pill';
 export const COPY_BUTTON_SELECTORS = [
   'button[data-testid="copy-turn-action-button"]',
   'button[aria-label="Copy response"]',
@@ -92,5 +92,4 @@ export const COPY_BUTTON_SELECTORS = [
 ] as const;
 export const COPY_BUTTON_SELECTOR = COPY_BUTTON_SELECTORS.join(", ");
 // Action buttons that only appear once a turn has finished rendering.
-export const FINISHED_ACTIONS_SELECTOR =
-  `${COPY_BUTTON_SELECTOR}, button[data-testid="good-response-turn-action-button"], button[data-testid="bad-response-turn-action-button"], button[aria-label="Share"]`;
+export const FINISHED_ACTIONS_SELECTOR = `${COPY_BUTTON_SELECTOR}, button[data-testid="good-response-turn-action-button"], button[data-testid="bad-response-turn-action-button"], button[aria-label="Share"]`;

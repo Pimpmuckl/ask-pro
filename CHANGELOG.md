@@ -4,22 +4,30 @@
 
 ### Changed
 
-- Browser: add ChatGPT `gpt-5.5-pro` / `gpt-5.5` selection labels, make browser-mode runs without an explicit model target `GPT-5.5 Pro`, and keep the API default unchanged.
+- Rename the shipped package and binary surface to `ask_pro` / `ask-pro`.
+- Narrow the product to browser-backed ChatGPT Pro escalation with project-local `.ask-pro/` sessions and a persistent `~/.ask-pro/browser-profile`.
+- Remove the old API provider, Gemini, MCP, TUI, bridge, remote-service, image, notifier, and multi-model source/test surfaces from V1.
+- Trim runtime dependencies to the ask-pro browser closure.
 
 ### Added
 
-- Browser: add `--browser-attach-running` to reuse a local already-running signed-in Chrome through Chrome's local remote-debugging toggle. Oracle opens a dedicated tab, stores attach metadata for reattach, and leaves the browser itself untouched.
+- Add the minimal V1 CLI: `ask-pro "<question>"`, `--files`, `--dry-run`, `--resume`, `--status`, `--harvest`, `--copy`, and `--verbose`.
+- Add the `$ask-pro` skill and Codex plugin skeleton.
+- Add generated response zip discovery, download, validation, extraction, and `PRO_OUTPUT_MANIFEST.json` metadata.
+- Add a non-resubmitting `--resume` harvest path for submitted, waiting, and timed-out browser sessions.
 
 ### Fixed
 
-- Browser: recognize ChatGPT's composer-pill model picker and the model-menu thinking-effort control so current ChatGPT UI changes do not break Pro browser runs.
+- Browser: recognize ChatGPT's composer-pill model picker and Configure / `Pro thinking effort` dialog so current ChatGPT UI changes do not break Pro browser runs.
+- Browser: force an English browser locale for ask-pro runs to reduce selector drift from localized ChatGPT UI.
+- Browser: detect the current top-right temporary-chat control shape instead of relying only on URL flags.
+- Browser: preserve successful sends when ChatGPT does not immediately render sent-message attachment UI.
 - Browser: prefer ChatGPT's `Copy response` action over `Copy message` when capturing browser markdown.
 - Browser: stop treating transient reasoning placeholders as completed answers, and scan all assistant content blocks in the latest turn so runs do not finish early when ChatGPT renders a placeholder block before the real answer.
-- Sessions: fix premature session end detection by increasing Chrome port check timeout from 250ms to 1000ms and adding retry logic (2 retries with 100ms delay). This prevents running browser sessions from being incorrectly marked as error when Chrome is temporarily slow to respond under system load.
 
 ### Docs
 
-- Browser: document the new attach-running workflow and add a manual smoke test for the direct attach path.
+- Rewrite the README and manual smoke docs around `ask-pro`, manual auth, context bundles, response zip fallback, and the reduced V1 validation loop.
 
 ## 0.9.0 — 2026-03-08
 

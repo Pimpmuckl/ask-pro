@@ -11,6 +11,8 @@ describe("resolveBrowserConfig", () => {
     expect(resolved.headless).toBe(false);
     expect(resolved.manualLogin).toBe(isWindows);
     expect(resolved.profileLockTimeoutMs).toBe(300_000);
+    expect(resolved.manualLoginWaitMs).toBe(1_200_000);
+    expect(resolved.acceptLanguage).toBe("en-US,en");
   });
 
   test("applies overrides", () => {
@@ -24,6 +26,8 @@ describe("resolveBrowserConfig", () => {
       chromeProfile: "Profile 1",
       chromePath: "/Applications/Chrome",
       browserTabRef: "current",
+      manualLoginWaitMs: 12_000,
+      acceptLanguage: "en-GB,en",
       debug: true,
     });
     expect(resolved.url).toBe("https://example.com/");
@@ -35,6 +39,8 @@ describe("resolveBrowserConfig", () => {
     expect(resolved.chromeProfile).toBe("Profile 1");
     expect(resolved.chromePath).toBe("/Applications/Chrome");
     expect(resolved.browserTabRef).toBe("current");
+    expect(resolved.manualLoginWaitMs).toBe(12_000);
+    expect(resolved.acceptLanguage).toBe("en-GB,en");
     expect(resolved.debug).toBe(true);
   });
 

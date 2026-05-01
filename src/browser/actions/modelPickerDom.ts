@@ -25,8 +25,10 @@ export function buildModelPickerDomHelpers(): string {
         if (label.includes('model')) score += 300;
         if (label.includes('gpt') || label.includes('chatgpt')) score += 200;
         if (label.includes('auto')) score += 250;
+        if (label.includes('instant')) score += 250;
         if (/\\b5\\b/.test(label) || /\\b5\\s+[0-9]\\b/.test(label)) score += 150;
         if ((label.includes('thinking') || label.includes('pro')) && !isEffortOnly) score += 100;
+        if (className.includes('__composer-pill') && label.includes('instant')) score += 120;
         if (className.includes('__composer-pill') && hasMenu && isEffortOnly) score += 120;
         if (isEffortOnly) score += 20;
         const rect = candidate.getBoundingClientRect?.();

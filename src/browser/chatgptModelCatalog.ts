@@ -1,5 +1,4 @@
-import type { ModelName } from "../oracle/types.js";
-
+export type ChatGptBrowserModelName = string;
 export type ChatGptBrowserModelVersion = "5-5" | "5-4" | "5-2" | "5-1" | "5-0";
 export type ChatGptBrowserModelKind = "pro" | "thinking" | "instant" | null;
 
@@ -9,7 +8,7 @@ export interface ChatGptVisibleAlias {
 }
 
 export interface ChatGptBrowserModelTarget {
-  model: ModelName;
+  model: ChatGptBrowserModelName;
   label: string;
   version: ChatGptBrowserModelVersion;
   kind: ChatGptBrowserModelKind;
@@ -60,7 +59,7 @@ const CHATGPT_BROWSER_MODEL_TARGETS: ChatGptBrowserModelTarget[] = [
   { model: "gpt-5-pro", label: "GPT-5 Pro", version: "5-0", kind: "pro" },
 ];
 
-const CHATGPT_BROWSER_ALIASES = new Map<string, ModelName>([
+const CHATGPT_BROWSER_ALIASES = new Map<string, ChatGptBrowserModelName>([
   ["gpt-5-pro", LATEST_CHATGPT_BROWSER_PRO_MODEL],
   ["gpt-5.1-pro", LATEST_CHATGPT_BROWSER_PRO_MODEL],
   ["gpt-5.2-pro", LATEST_CHATGPT_BROWSER_PRO_MODEL],
@@ -95,13 +94,15 @@ export const CHATGPT_BROWSER_VERSION_PATTERNS: ChatGptVersionPattern[] = [
   },
 ];
 
-export function isChatGptModelForBrowser(model: ModelName): boolean {
+export function isChatGptModelForBrowser(model: ChatGptBrowserModelName): boolean {
   const normalized = model.toLowerCase();
   return normalized.startsWith("gpt-") && !normalized.includes("codex");
 }
 
-export function normalizeChatGptBrowserModelForBrowser(model: ModelName): ModelName {
-  const normalized = model.toLowerCase() as ModelName;
+export function normalizeChatGptBrowserModelForBrowser(
+  model: ChatGptBrowserModelName,
+): ChatGptBrowserModelName {
+  const normalized = model.toLowerCase();
   if (!isChatGptModelForBrowser(normalized)) {
     return model;
   }
@@ -110,18 +111,20 @@ export function normalizeChatGptBrowserModelForBrowser(model: ModelName): ModelN
   );
 }
 
-export function mapChatGptModelToBrowserLabel(model: ModelName): string | undefined {
+export function mapChatGptModelToBrowserLabel(model: ChatGptBrowserModelName): string | undefined {
   const normalized = normalizeChatGptBrowserModelForBrowser(model);
   return getChatGptBrowserTarget(normalized)?.label;
 }
 
-export function inferChatGptBrowserModelFromLabel(label: string): ModelName | undefined {
+export function inferChatGptBrowserModelFromLabel(
+  label: string,
+): ChatGptBrowserModelName | undefined {
   const normalized = label.trim().toLowerCase();
   if (!normalized) {
     return undefined;
   }
   if (getChatGptBrowserTarget(normalized)) {
-    return normalized as ModelName;
+    return normalized;
   }
 
   const version = inferVersionFromText(normalized);
@@ -268,7 +271,9 @@ export function getChatGptModelKindTestIdTokens(): Record<"pro" | "thinking", st
   };
 }
 
-function getChatGptBrowserTarget(model: ModelName): ChatGptBrowserModelTarget | undefined {
+function getChatGptBrowserTarget(
+  model: ChatGptBrowserModelName,
+): ChatGptBrowserModelTarget | undefined {
   const normalized = model.toLowerCase();
   return CHATGPT_BROWSER_MODEL_TARGETS.find((target) => target.model === normalized);
 }

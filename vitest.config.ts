@@ -3,28 +3,18 @@ import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   test: {
-    setupFiles: ["tests/setup-env.ts", "tests/cli/runOracle/setup.ts"],
+    setupFiles: ["tests/setup-env.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
       all: true,
-      // Measure the real TypeScript sources (the repo doesn’t ship .js in src).
-      include: ["src/**/*.ts"],
-      // Exclude interactive/IPC entrypoints that aren’t practical to unit test.
+      include: ["src/ask-pro/**/*.ts", "src/browser/**/*.ts", "bin/ask-pro-cli.ts"],
       exclude: [
-        "src/cli/tui/**",
-        "src/remote/**",
-        "src/mcp/**",
         "src/browser/actions/**",
         "src/browser/index.ts",
         "src/browser/pageActions.ts",
         "src/browser/chromeLifecycle.ts",
         "src/browserMode.ts",
-        "src/oracle.ts",
-        "src/oracle/modelRunner.ts",
-        "src/oracle/stringifier.ts",
-        "src/oracle/types.ts",
-        "src/types/**",
       ],
     },
   },

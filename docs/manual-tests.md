@@ -1,304 +1,152 @@
-# Manual Test Suite (Browser Mode + Live API)
+# Manual Tests
 
-These checks validate the real Chrome automation path and the optional live
-Responses API smoke suite. Run the browser steps whenever you touch Chrome
-automation (lifecycle, cookie sync, prompt injection, Markdown capture, etc.),
-and run the live API suite before shipping major transport changes.
+These checks exercise the real ChatGPT browser path. They are opt-in because
+they open Chrome, use the signed-in ChatGPT account, and can take several
+minutes or longer for Pro thinking.
 
 ## Prerequisites
 
-- macOS with Chrome installed (default profile signed in to ChatGPT Pro).
-- Node 22+ and `pnpm install` already completed.
-- Headful display access (no `--browser-headless`).
-- When debugging, add `--browser-keep-browser` so Chrome stays open after Oracle exits, then connect with `pnpm exec tsx scripts/browser-tools.ts ...` (screenshot, eval, DOM picker, etc.).
-- Ensure no Chrome instances are force-terminated mid-run; let Oracle clean up once you’re done capturing state.
-- Clipboard checks (`browser-tools.ts eval "navigator.clipboard.readText()"`) trigger a permission dialog in Chrome—approve it for debugging, but remember that we can’t rely on readText in unattended runs.
+- Node 24+.
+- `pnpm install` completed.
+- Headful Chrome available.
+- ChatGPT login completed in the ask-pro browser profile:
 
-## Test Cases
+  ```text
+  ~/.ask-pro/browser-profile
+  ```
 
-### Quick browser port smoke
+- Do not click ChatGPT's `Answer now` button during Pro thinking. That skips the
+  long-thinking path this tool is trying to preserve.
 
-- `pnpm test:browser` — launches headful Chrome and checks the DevTools endpoint is reachable. Set `ORACLE_BROWSER_PORT` (or `ORACLE_BROWSER_DEBUG_PORT`) to reuse a fixed port when you’ve already opened a firewall rule.
+## Local Checks
 
-### Gemini browser mode (Gemini web / cookies)
-
-Run this whenever you touch the Gemini web client or the `--generate-image` / `--edit-image` plumbing.
-
-Prereqs:
-
-- Chrome profile is signed into `gemini.google.com`.
-
-1. Generate an image:
-   `pnpm run oracle -- --engine browser --model gemini-3-pro --prompt "a cute robot holding a banana" --generate-image /tmp/gemini-gen.jpg --aspect 1:1 --wait --verbose`
-   - Confirm the output file exists and is a real image (`file /tmp/gemini-gen.jpg`).
-2. Edit an image:
-   `pnpm run oracle -- --engine browser --model gemini-3-pro --prompt "add sunglasses" --edit-image /tmp/gemini-gen.jpg --output /tmp/gemini-edit.jpg --wait --verbose`
-   - Confirm `/tmp/gemini-edit.jpg` exists.
-
-### Multi-Model CLI fan-out
-
-Run this whenever you touch the session store, CLI session views, or TUI wiring for multi-model runs.
-
-1. Kick off an API multi-run:
-   `pnpm run oracle -- --models "gpt-5.1-pro,gemini-3-pro" --prompt "Compare the moon & sun."`
-   - Expect stdout to print sequential sections, one per model (`[gpt-5.1-pro] …` followed by `[gemini-3-pro] …`). No interleaved tokens.
-2. Capture the session ID from the summary line. Run `oracle session --status --model gpt-5.1-pro`.
-   - Table should collapse to sessions that include GPT-5.1 Pro and show status icons (✓/⌛/✖) per model.
-3. Inspect detailed logs: `oracle session <id>`
-   - The metadata header now includes a `Models:` block with one line per model plus token counts.
-   - When prompted, pick `View gemini-3-pro log` and confirm only that model’s stream renders. Refresh should keep completed models intact even if others still run.
-4. Model filter path: `oracle session <id> --model gemini-3-pro`
-   - Attach mode should error if that model is missing (double-check by filtering for a bogus model), otherwise it should render the prompt + single-model log only.
-
-### Write-output export (API)
-
-Run this when touching session serialization, file IO helpers, or CLI flag plumbing.
-
-1. `ORACLE_LIVE_TEST=1 OPENAI_API_KEY=<real key> pnpm vitest run tests/live/write-output-live.test.ts --runInBand`
-   - Expect the test to create a temp `write-output-live.md` file containing `write-output e2e`.
-2. Manual spot-check: `oracle --prompt "answer file smoke" --write-output /tmp/out.md --wait`
-   - Confirm `/tmp/out.md` exists with the answer text and a trailing newline.
-3. Multi-model spot-check: `oracle --models "gpt-5.1-pro,gemini-3-pro" --prompt "two files" --write-output /tmp/out.md --wait`
-   - Confirm `/tmp/out.gpt-5.1-pro.md` and `/tmp/out.gemini-3-pro.md` exist with distinct content.
-
-### Lightweight Browser CLI (manual exploration)
-
-Before running any agent-driven debugging, you can rely on the TypeScript CLI in `scripts/browser-tools.ts`:
+Run these before any live browser smoke:
 
 ```bash
-# Show help / available commands
-pnpm tsx scripts/browser-tools.ts --help
-
-# Launch Chrome with your normal profile so you stay logged in
-pnpm tsx scripts/browser-tools.ts start --profile
-
-# Drive the active tab
-pnpm tsx scripts/browser-tools.ts nav https://example.com
-pnpm tsx scripts/browser-tools.ts eval 'document.title'
-pnpm tsx scripts/browser-tools.ts screenshot
-pnpm tsx scripts/browser-tools.ts pick "Select checkout button"
-pnpm tsx scripts/browser-tools.ts cookies
-pnpm tsx scripts/browser-tools.ts inspect   # show DevTools-enabled Chrome PIDs/ports/tabs
-pnpm tsx scripts/browser-tools.ts kill --all --force   # tear down straggler DevTools sessions
+pnpm run build
+pnpm run lint
+pnpm run test:ask-pro
+pnpm run format:check
+pnpm pack --dry-run
 ```
 
-This mirrors Mario Zechner’s “What if you don’t need MCP?” technique and is handy when you just need a few quick interactions without spinning up additional tooling.
+## Dry Run
 
-Debug note: when you have a live ChatGPT tab open under a DevTools port and need a quick DOM dump of the last assistant turn, run `pnpm tsx scripts/debug/extract-chatgpt-response.ts <port>`.
+Dry run creates the session files and context zip without opening ChatGPT.
 
-1. **Prompt Submission & Model Switching**
-   - With Chrome signed in and cookie sync enabled, run
-     ```bash
-     pnpm run oracle -- --engine browser --model "GPT-5.2" \
-       --prompt "Line 1\nLine 2\nLine 3"
-     ```
-   - Observe logs for:
-     - `Prompt textarea ready (xxx chars queued)` (twice: initial + after model switch).
-     - `Model picker: ... 5.2 ...`.
-     - `Clicked send button` (or Enter fallback).
-   - In the attached Chrome window, verify the multi-line prompt appears exactly as sent.
+```bash
+pnpm start -- --dry-run --files src/ask-pro/session.ts "Review the ask-pro session skeleton."
+```
 
-2. **Markdown Capture**
-   - Prompt:
-     ```bash
-     pnpm run oracle -- --engine browser --model "GPT-5.2" \
-       --prompt "Produce a short bullet list with code fencing."
-     ```
-   - Expected CLI output:
-     - `Answer:` section containing bullet list with Markdown preserved (e.g., `- item`, fenced code).
-     - Session log (`oracle session <id>`) should show the assistant markdown (confirm via `grep -n '```' ~/.oracle/sessions/<id>/output.log`).
+Expected:
 
-3. **Stop Button Handling**
+- A new `.ask-pro/sessions/<session-id>/` directory exists.
+- `PROMPT.md`, `MANIFEST.md`, `MANIFEST.json`, `CONTEXT.zip`, and `status.json`
+  exist.
+- `status.json` reports a dry-run/prepared state.
 
-- Start a long prompt (`"Write a detailed essay about browsers"`) and once ChatGPT responds, manually click “Stop generating” inside Chrome.
-- Oracle should detect the assistant message (partial) and still store the markdown.
+## First Login / Auth Gate
 
-4. **Override Flag**
+Run a tiny prompt:
 
-- Run with `--browser-allow-cookie-errors` while intentionally breaking bindings.
-- Confirm log shows `Cookie sync failed (continuing with override)` and the run proceeds headless/logged-out.
-- Remember: the browser composer now pastes only the user prompt (plus any inline file blocks). If you see the default “You are Oracle…” text or other system-prefixed content in the ChatGPT composer, something regressed in `assembleBrowserPrompt` and you should stop and file a bug.
-- Heartbeats: Browser runs emit `--heartbeat` status while waiting. Long Thinking/Pro runs should show `[browser] ChatGPT thinking ...` or `[browser] Waiting for ChatGPT response ...`; the log must not include reasoning text from the side panel.
+```bash
+pnpm start -- "Return exactly ASK_PRO_BROWSER_LOGIN_READY."
+```
 
-## Post-Run Validation
+If ChatGPT asks for login, MFA, or a challenge:
 
-- `oracle session <id>` should replay the transcript with markdown.
-- `~/.oracle/sessions/<id>/meta.json` must include `browser.config` metadata (model label, cookie settings) and `browser.runtime` (PID/port).
+1. Complete it manually in the opened browser.
+2. Leave the browser open.
+3. Resume the printed session:
 
-Document results (pass/fail, session IDs) in PR descriptions so reviewers can audit real-world behavior.
+   ```bash
+   pnpm start -- --resume <session-id>
+   ```
+
+Expected:
+
+- The tool does not ask for credentials.
+- The session records `NEEDS_USER_AUTH` or resumes to completion.
+- `ANSWER.md` contains the exact requested phrase after completion.
+
+## Fast Browser Smoke
+
+Use this after touching browser launch, model selection, prompt submission,
+attachment upload, answer harvest, or session persistence.
+
+```bash
+pnpm start -- --verbose --files README.md "Return exactly one line and nothing else: ASK_PRO_BROWSER_OK"
+```
+
+Expected:
+
+- Chrome opens with the ask-pro profile.
+- ChatGPT stays in English UI if possible.
+- The model picker can select the Pro path.
+- If the current ChatGPT UI shows Configure / `Pro thinking effort`, the run
+  selects `Extended` when available.
+- The top-right temporary-chat control does not confuse the run state.
+- Upload logs show the context bundle was queued and uploaded.
+- `ANSWER.md` contains `ASK_PRO_BROWSER_OK`.
+
+## Response Zip Smoke
+
+Use this when touching `src/ask-pro/responseZip.ts` or the post-answer browser
+hook.
+
+```bash
+pnpm start -- --verbose --files README.md "Return a short answer. If you can create a zip, include a zip named ask-pro-response.zip containing IMPLEMENTATION_PLAN.md, TASKS.json, TEST_PLAN.md, RISK_REGISTER.md, FILES_TO_EDIT.md, and REPO_CONTEXT_USED.md."
+```
+
+Expected:
+
+- Markdown fallback always works: `ANSWER.md` exists.
+- If ChatGPT exposes a `.zip` link, the session has:
+  - `downloads/<file>.zip`
+  - `pro-output/`
+  - `PRO_OUTPUT_MANIFEST.json` with `responseZip.status = "downloaded"`
+- If ChatGPT does not expose a zip link, the session still completes with
+  `responseZip.status = "unavailable"`.
+- Generated zip contents are not executed.
+
+## Debugging A Live Browser
+
+When a run is active, browser metadata is stored in:
+
+```text
+.ask-pro/sessions/<session-id>/browser.json
+```
+
+Use the recorded Chrome port for DOM inspection with the local browser tools:
+
+```bash
+pnpm tsx scripts/browser-tools.ts inspect
+pnpm tsx scripts/browser-tools.ts eval --port <port> "({ href: location.href, title: document.title, lang: document.documentElement.lang })"
+```
+
+For answer-capture debugging:
+
+```bash
+pnpm tsx scripts/debug/extract-chatgpt-response.ts <port>
+```
+
+Record session IDs and pass/fail outcomes in PR notes so reviewers can audit the
+real browser behavior.
 
 ## Recent Smoke Runs
 
-- 2025-11-18 — API gpt-5.1 (`api-smoke-give-two-words`): returned “blue sky” in 2.5s.
-- 2025-11-18 — API gpt-5.1-pro (`api-smoke-pro-three-words`): completed in 3m08s with “Fast API verification”.
-- 2025-11-18 — Browser gpt-5.1 Instant (`browser-smoke-instant-two-words`): completed in ~10s; replied with a clarification prompt.
-- 2025-11-18 — Browser gpt-5.1-pro (`browser-smoke-pro-three-words`): completed in ~1m33s; response noted “Search tool used.”.
-- 2025-11-18 (rerun) — API gpt-5.1 (`api-smoke-give-two-words`): reconfirmed OK; same answer + cost bracket.
-- 2025-11-18 (rerun) — Browser gpt-5.1-pro (`browser-smoke-pro-three-words`): reconfirmed OK; included heartbeat progress and search tool note.
-- 2025-11-20 — Browser gpt-5.1 via `oracle serve` (remote host on same Mac): fetched https://example.com; title “Example Domain”; first sentence “This domain is for use in documentation examples without needing permission.” (ran via tmux sessions `oracle-serve` and `oracle-client`).
-
-## Browser Regression Checklist (manual)
-
-Run these four smoke tests whenever we touch browser automation:
-
-Fast-path note:
-- Tests 1-4 below are quick browser-path checks only. They use `gpt-5.2-instant`, which currently targets the ChatGPT Instant 5.3 picker. They are not a substitute for Pro validation.
-
-1. **Fast browser simple prompt**
-   `pnpm run oracle -- --engine browser --model gpt-5.2-instant --prompt "Return exactly one line and nothing else: pro-ok"`
-   Expect the answer body to contain `pro-ok` verbatim on its own line. Note the session ID.
-
-2. **Fast browser exact-line prompt**
-   `pnpm run oracle -- --engine browser --model gpt-5.2-instant --prompt "Return exactly these three lines and nothing else:\n\`\`\`js\nconsole.log('thinking-ok')\n\`\`\`"`
-   Confirm the answer includes the fenced `js` code block and `console.log('thinking-ok')` verbatim.
-
-3. **Fast browser + attachment**
-   Prepare `/tmp/browser-md.txt` with a short note, then run
-   `pnpm run oracle -- --engine browser --model gpt-5.2-instant --prompt "Return exactly one line and nothing else: note=<paste the file contents exactly>" --file /tmp/browser-md.txt`
-   Ensure upload logs show “Attachment queued” and the answer contains `note=` plus the attached file contents exactly.
-
-4. **Fast browser + attachment (verbose)**
-   Prepare `/tmp/browser-report.txt` with faux metrics, then run
-   `pnpm run oracle -- --engine browser --model gpt-5.2 --prompt "Use the attachment to report current CPU and memory figures" --file /tmp/browser-report.txt --verbose`
-   Verify verbose logs show attachment upload and the final answer matches the file data.
-   Expected attachment-send logs:
-   - `Attachment queued`
-   - `All attachments uploaded`
-   - `Clicked send button`
-   - no `Submitted prompt via Enter key` after the attachment upload stage
-
-5. **Attachment send race guard**
-   Prepare a small text file, then run
-   `pnpm run oracle -- --engine browser --model gpt-5.2 --prompt "Reply exactly with OK." --file /tmp/browser-report.txt --verbose`
-   Validate one of these outcomes:
-   - success path: `All attachments uploaded` followed by `Clicked send button`, then the assistant answer
-   - fail-fast path: an explicit attachment/browser automation error before send, with no Enter fallback
-
-### Pro browser smoke
-
-Run these when the change might affect Pro-specific behavior, long thinking, or reattach.
-
-1. **Pro markdown capture**
-   `pnpm run oracle -- --engine browser --model gpt-5.4-pro --prompt "Return exactly these three lines and nothing else:\n\`\`\`js\nconsole.log('thinking-ok')\n\`\`\`"`
-   Confirm the answer preserves the fenced `js` code block.
-
-2. **Pro reattach flow**
-   Use `scripts/browser-smoke.sh` or run a manual `--browser-keep-browser` session with `gpt-5.4-pro`, then kill the controller and verify `oracle session <slug> --render-plain` still shows the expected answer.
-
-Record session IDs and outcomes in the PR description (pass/fail, notable delays). This ensures reviewers can audit real runs.
-
-### Remote Chrome smoke test (CDP)
-
-Run this whenever you touch CDP connection logic (remote chrome lifecycle, attachment transfer) or before executing remote sessions in CI.
-
-1. Launch a throwaway Chrome instance with remote debugging enabled (adjust the path per OS):
-   ```bash
-   REMOTE_PROFILE=/tmp/oracle-remote-test-profile
-   rm -rf "$REMOTE_PROFILE"
-   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-     --headless=new \
-     --disable-gpu \
-     --remote-debugging-port=9333 \
-     --remote-allow-origins=* \
-     --user-data-dir="$REMOTE_PROFILE" \
-     >/tmp/oracle-remote-chrome.log 2>&1 &
-   export REMOTE_CHROME_PID=$!
-   sleep 3
-   ```
-2. Run the helper to verify CDP connectivity:
-   ```bash
-   pnpm tsx scripts/test-remote-chrome.ts localhost 9333
-   ```
-   Expect ✓ logs for connection, protocol info, navigation to https://chatgpt.com/, and the final “POC successful!” line.
-3. Tear down the temporary browser:
-   ```bash
-   kill "$REMOTE_CHROME_PID"
-   rm -rf "$REMOTE_PROFILE"
-   ```
-   Use `pkill -f oracle-remote-test-profile` if Chrome refuses to exit cleanly.
-
-Capture the pass/fail result (include the helper’s log snippet) in your PR description alongside other manual browser tests.
-
-### Attach-running smoke test
-
-Run this whenever you touch the local attach path (`--browser-attach-running`) or the direct browser websocket bootstrap.
-
-1. Start or reuse a local signed-in Chrome with DevTools access available. If you want an explicit local endpoint, launch Chrome with `--remote-debugging-port=9222`.
-2. Run Oracle against the running browser:
-   ```bash
-   pnpm run oracle -- --engine browser \
-     --browser-attach-running \
-     --model "GPT-5.2" \
-     --prompt "Give me two short markdown bullets about browser tabs"
-   ```
-   If the browser’s remote-debugging UI shows a different local port, rerun with `--remote-chrome <host:port>` in addition to `--browser-attach-running`.
-3. Verify Oracle opens a fresh tab in the existing browser, returns the answer, and closes only that Oracle-owned tab afterward.
-4. Reattach sanity check: repeat with a very short timeout if needed, then run `oracle session <id>` and confirm Oracle can reconnect to the saved tab/conversation.
-
-## Chrome DevTools / MCP Debugging
-
-Use this when you need to inspect the live ChatGPT composer (DOM state, markdown text, screenshots, etc.). For smaller ad‑hoc pokes, you can often rely on `pnpm tsx scripts/browser-tools.ts …` instead.
-
-1. **Launch within tmux**
-
-   ```bash
-   tmux new -d -s oracle-browser \\
-     "pnpm run oracle -- --engine browser --browser-keep-browser \\
-       --model 'GPT-5.4 Pro' --prompt 'Debug via DevTools.'"
-   ```
-
-   Keeping the run in tmux prevents your shell from blocking and ensures Chrome stays open afterward.
-
-2. **Grab the DevTools port**
-   - `tmux capture-pane -pt oracle-browser` to read the logs (`Launched Chrome … on port 56663`).
-   - Verify the endpoint:
-     ```bash
-     curl http://127.0.0.1:<PORT>/json/version
-     ```
-     Note the `webSocketDebuggerUrl` for reference.
-
-3. **Attach Chrome DevTools MCP**
-   - One-off: `CHROME_DEVTOOLS_URL=http://127.0.0.1:<PORT> npx -y chrome-devtools-mcp@latest`
-   - `mcporter` config snippet:
-     ```json
-     {
-       "chrome-devtools": {
-         "command": "npx",
-         "args": ["-y", "chrome-devtools-mcp@latest", "--browserUrl", "http://127.0.0.1:<PORT>"]
-       }
-     }
-     ```
-   - Once the server prints `chrome-devtools-mcp exposes…`, you can list/call tools via `mcporter`.
-   - Oracle’s attach-running mode no longer depends on MCP at runtime; `mcporter` remains useful here for manual inspection only.
-
-4. **Interact & capture**
-   - Use MCP tools (`click`, `evaluate_js`, `screenshot`, etc.) to debug the composer contents.
-   - Record any manual actions you take (e.g., “fired evaluate_js to dump #prompt-textarea.innerText”).
-
-5. **Cleanup**
-   - `tmux kill-session -t oracle-browser`
-   - `pkill -f oracle-browser-<slug>` if Chrome is still running.
-
-> **Tip:** Running `npx chrome-devtools-mcp@latest --help` lists additional switches (custom Chrome binary, headless, viewport, etc.).
-
-## Responses API Live Smoke Tests
-
-These Vitest cases hit the real OpenAI API to exercise both transports:
-
-1. Export a real key and explicitly opt in (default runs stay fast):
-   ```bash
-   export OPENAI_API_KEY=sk-...
-   export ORACLE_LIVE_TEST=1
-   pnpm vitest run tests/live/openai-live.test.ts
-   ```
-2. The first two tests target the current fast browser picker path (`gpt-5.2-instant` aliasing
-   to Instant 5.3). The later background tests send `gpt-5.4-pro` and `gpt-5.2-pro`
-   prompts and expect the CLI to stay in background mode until OpenAI finishes
-   (up to 30 minutes).
-3. Watch the console for `Reconnected to OpenAI background response...` if
-   you're debugging transport flakiness; the test will fail if the response
-   status isn't `completed` or if the text doesn't contain the hard-coded
-   smoke strings.
-
-Skip these unless you're intentionally validating the production API; they are
-fully gated behind `ORACLE_LIVE_TEST=1` to avoid accidental CI runs.
+- 2026-05-01 - `2026-05-01T165438-return-exactly-ask-pro-browser-login-ready`
+  completed through the ask-pro browser profile and harvested
+  `ASK_PRO_BROWSER_LOGIN_READY`.
+- 2026-05-01 - `2026-05-01T185727-live-smoke-for-ask-pro-after-cdp-mouse-click-zip`
+  completed through the ask-pro browser profile, harvested
+  `ASK_PRO_RESPONSE_ZIP_MOUSE_OK`, downloaded `ask-pro-response.zip`, and
+  extracted all required response files with `responseZip.status = "downloaded"`.
+- 2026-05-01 - `2026-05-01T200822-live-smoke-for-ask-pro-extended-thinking-and-ina`
+  selected `Extended Pro`, logged `Thinking time: Extended (already selected)`,
+  handled the inactive top-right temporary-chat control, and harvested
+  `ASK_PRO_EXTENDED_TEMP_OK`.
+- 2026-05-01 - `2026-05-01T201243-final-ask-pro-live-acceptance-smoke-return-exact`
+  repeated the Extended Pro live path, harvested
+  `ASK_PRO_FINAL_EXTENDED_CLEANUP_OK`, and completed browser cleanup instead of
+  leaving an ask-pro Chrome tab open.

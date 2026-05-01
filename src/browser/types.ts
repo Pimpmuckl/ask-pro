@@ -1,11 +1,10 @@
 import type CDP from "chrome-remote-interface";
 import type Protocol from "devtools-protocol";
-import type { BrowserRuntimeMetadata } from "../sessionStore.js";
-import type { ThinkingTimeLevel } from "../oracle/types.js";
 
 export type ChromeClient = Awaited<ReturnType<typeof CDP>>;
 export type CookieParam = Protocol.Network.CookieParam;
 export type BrowserModelStrategy = "select" | "current" | "ignore";
+export type ThinkingTimeLevel = "light" | "standard" | "extended" | "heavy";
 
 export type BrowserLogger = ((message: string) => void) & {
   verbose?: boolean;
@@ -16,6 +15,20 @@ export interface BrowserAttachment {
   path: string;
   displayPath: string;
   sizeBytes?: number;
+}
+
+export interface BrowserRuntimeMetadata {
+  browserTransport?: "cdp";
+  chromePid?: number;
+  chromePort?: number;
+  chromeHost?: string;
+  chromeBrowserWSEndpoint?: string;
+  chromeProfileRoot?: string;
+  userDataDir?: string;
+  chromeTargetId?: string;
+  tabUrl?: string;
+  conversationId?: string;
+  controllerPid?: number;
 }
 
 export interface BrowserAutomationConfig {
@@ -61,6 +74,8 @@ export interface BrowserAutomationConfig {
   manualLogin?: boolean;
   manualLoginProfileDir?: string | null;
   manualLoginCookieSync?: boolean;
+  manualLoginWaitMs?: number;
+  acceptLanguage?: string;
   /** Thinking time intensity level for Thinking/Pro models: light, standard, extended, heavy */
   thinkingTime?: ThinkingTimeLevel;
 }
@@ -79,6 +94,18 @@ export interface BrowserRunOptions {
   verbose?: boolean;
   /** Optional hook to persist runtime info (port/url/target) as soon as Chrome is ready. */
   runtimeHintCb?: (hint: BrowserRuntimeMetadata) => void | Promise<void>;
+  /** Optional hook that can inspect the live page after the final answer is captured. */
+  afterAnswerCb?: (context: {
+    Runtime: ChromeClient["Runtime"];
+    Page: ChromeClient["Page"];
+    Input: ChromeClient["Input"];
+    answer: {
+      text: string;
+      markdown: string;
+      html?: string;
+      meta?: { turnId?: string | null; messageId?: string | null };
+    };
+  }) => void | Promise<void>;
 }
 
 export interface BrowserRunResult {
@@ -110,6 +137,8 @@ export type ResolvedBrowserConfig = Required<
     | "remoteChrome"
     | "remoteChromeBrowserWSEndpoint"
     | "remoteChromeProfileRoot"
+    | "manualLoginWaitMs"
+    | "acceptLanguage"
     | "thinkingTime"
     | "modelStrategy"
   >
@@ -130,4 +159,6 @@ export type ResolvedBrowserConfig = Required<
   manualLogin?: boolean;
   manualLoginProfileDir?: string | null;
   manualLoginCookieSync?: boolean;
+  manualLoginWaitMs?: number;
+  acceptLanguage?: string;
 };

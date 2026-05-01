@@ -19,6 +19,7 @@ import {
   connectWithNewTab,
   closeTab,
   closeRemoteChromeTarget,
+  closeChromeGracefully,
 } from "./chromeLifecycle.js";
 import { syncCookies } from "./cookies.js";
 import {
@@ -43,10 +44,10 @@ import { uploadAttachmentViaDataTransfer } from "./actions/remoteFileTransfer.js
 import { ensureThinkingTime } from "./actions/thinkingTime.js";
 import { startThinkingStatusMonitor } from "./actions/thinkingStatus.js";
 import { estimateTokenCount, withRetries, delay } from "./utils.js";
-import { formatElapsed } from "../oracle/format.js";
+import { formatElapsed } from "./format.js";
 import { CHATGPT_URL, CONVERSATION_TURN_SELECTOR, DEFAULT_MODEL_STRATEGY } from "./constants.js";
 import type { LaunchedChrome } from "chrome-launcher";
-import { BrowserAutomationError } from "../oracle/errors.js";
+import { BrowserAutomationError } from "./errors.js";
 import { alignPromptEchoPair, buildPromptEchoMatcher } from "./reattachHelpers.js";
 import type { ProfileRunLock } from "./profileState.js";
 import {
@@ -60,7 +61,7 @@ import {
   writeDevToolsActivePort,
 } from "./profileState.js";
 import { runProviderSubmissionFlow } from "./providerDomFlow.js";
-import { chatgptDomProvider } from "./providers/index.js";
+import { chatgptDomProvider } from "./providers/chatgptDomProvider.js";
 import { resolveAttachRunningConnection } from "./attachRunning.js";
 import { connectToExistingChatGptTab } from "./liveTabs.js";
 
@@ -274,10 +275,10 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
   const manualLogin = Boolean(config.manualLogin);
   const manualProfileDir = config.manualLoginProfileDir
     ? path.resolve(config.manualLoginProfileDir)
-    : path.join(os.homedir(), ".oracle", "browser-profile");
+    : path.join(os.homedir(), ".ask-pro", "browser-profile");
   const userDataDir = manualLogin
     ? manualProfileDir
-    : await mkdtemp(path.join(await resolveUserDataBaseDir(), "oracle-browser-"));
+    : await mkdtemp(path.join(await resolveUserDataBaseDir(), "ask-pro-browser-"));
   if (manualLogin) {
     // Learned: manual login reuses a persistent profile so cookies/SSO survive.
     await mkdir(userDataDir, { recursive: true });
@@ -381,7 +382,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         logger("Chrome window closed; attempting to abort run.");
         reject(
           new Error(
-            "Chrome window closed before oracle finished. Please keep it open until completion.",
+            "Chrome window closed before ask-pro finished. Please keep it open until completion.",
           ),
         );
       });
@@ -399,6 +400,13 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
       domainEnablers.push(DOM.enable());
     }
     await Promise.all(domainEnablers);
+    if (config.acceptLanguage) {
+      await Network.setExtraHTTPHeaders({
+        headers: {
+          "Accept-Language": config.acceptLanguage,
+        },
+      }).catch(() => undefined);
+    }
     removeDialogHandler = installJavaScriptDialogAutoDismissal(Page, logger);
     if (!manualLogin) {
       await Network.clearBrowserCookies();
@@ -460,7 +468,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
           details: {
             profile: config.chromeProfile ?? "Default",
             cookiePath: config.chromeCookiePath ?? null,
-            hint: "If macOS Keychain prompts or denies access, run oracle from a GUI session or use --copy/--render for the manual flow.",
+            hint: "If macOS Keychain prompts or denies access, run ask-pro from a GUI session or use the manual browser profile.",
           },
         },
       );
@@ -479,6 +487,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         appliedCookies,
         manualLogin,
         timeoutMs: config.timeoutMs,
+        manualLoginWaitMs: config.manualLoginWaitMs,
       }),
     );
 
@@ -761,7 +770,9 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
             },
           );
           if (!verified) {
-            throw new Error("Sent user message did not expose attachment UI after upload.");
+            logger(
+              "Sent user message did not expose attachment UI after upload; continuing after confirmed upload and send.",
+            );
           } else {
             logger("Verified attachments present on sent user message");
           }
@@ -1123,6 +1134,19 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
       // Bail out on mid-run disconnects so the session stays reattachable.
       throw new Error("Chrome disconnected before completion");
     }
+    if (options.afterAnswerCb) {
+      await options.afterAnswerCb({
+        Runtime,
+        Page,
+        Input,
+        answer: {
+          text: answerText,
+          markdown: answerMarkdown,
+          html: answerHtml || undefined,
+          meta: answer.meta,
+        },
+      });
+    }
     runStatus = "complete";
     const durationMs = Date.now() - startedAt;
     const answerChars = answerText.length;
@@ -1157,9 +1181,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         tabUrl: lastUrl,
         controllerPid: process.pid,
       };
-      const reuseProfileHint =
-        `oracle --engine browser --browser-manual-login ` +
-        `--browser-manual-login-profile-dir ${JSON.stringify(userDataDir)}`;
+      const reuseProfileHint = `ask-pro --resume <session-id> # browser profile: ${JSON.stringify(userDataDir)}`;
       await emitRuntimeHint();
       logger("Cloudflare challenge detected; leaving browser open so you can complete the check.");
       logger(`Reuse this browser profile with: ${reuseProfileHint}`);
@@ -1186,7 +1208,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     }
     await emitRuntimeHint();
     throw new BrowserAutomationError(
-      "Chrome window closed before oracle finished. Please keep it open until completion.",
+      "Chrome window closed before ask-pro finished. Please keep it open until completion.",
       {
         stage: "connection-lost",
         runtime: {
@@ -1217,13 +1239,14 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     }
     removeDialogHandler?.();
     removeTerminationHooks?.();
-    const keepBrowserOpen = effectiveKeepBrowser || preserveBrowserOnError;
+    const keepBrowserOpen =
+      preserveBrowserOnError || (effectiveKeepBrowser && runStatus !== "complete");
     if (!keepBrowserOpen) {
       if (!connectionClosedUnexpectedly) {
         try {
-          await chrome.kill();
+          await closeChromeGracefully(chrome, logger);
         } catch {
-          // ignore kill failures
+          // ignore close failures
         }
       }
       if (manualLogin) {
@@ -1310,18 +1333,20 @@ async function waitForLogin({
   appliedCookies,
   manualLogin,
   timeoutMs,
+  manualLoginWaitMs,
 }: {
   runtime: ChromeClient["Runtime"];
   logger: BrowserLogger;
   appliedCookies: number;
   manualLogin: boolean;
   timeoutMs: number;
+  manualLoginWaitMs?: number;
 }): Promise<void> {
   if (!manualLogin) {
     await ensureLoggedIn(runtime, logger, { appliedCookies });
     return;
   }
-  const deadline = Date.now() + Math.min(timeoutMs ?? 1_200_000, 20 * 60_000);
+  const deadline = Date.now() + Math.min(manualLoginWaitMs ?? timeoutMs ?? 1_200_000, timeoutMs);
   let lastNotice = 0;
   while (Date.now() < deadline) {
     try {
@@ -1448,8 +1473,10 @@ async function maybeReuseRunningChrome(
     logger(
       `DevToolsActivePort found for ${userDataDir} but unreachable (${probe.error}); launching new Chrome.`,
     );
-    // Safe cleanup: remove stale DevToolsActivePort; only remove lock files if this was an Oracle-owned pid that died.
-    await cleanupStaleProfileState(userDataDir, logger, { lockRemovalMode: "if_oracle_pid_dead" });
+    // Safe cleanup: remove stale DevToolsActivePort; only remove lock files if this was an ask-pro-owned pid that died.
+    await cleanupStaleProfileState(userDataDir, logger, {
+      lockRemovalMode: "if_ask_pro_pid_dead",
+    });
     return null;
   }
 
@@ -2056,6 +2083,19 @@ async function runRemoteBrowserMode(
         answerMarkdown = bestText;
       }
     }
+    if (options.afterAnswerCb) {
+      await options.afterAnswerCb({
+        Runtime,
+        Page,
+        Input,
+        answer: {
+          text: answerText,
+          markdown: answerMarkdown,
+          html: answerHtml || undefined,
+          meta: answer.meta,
+        },
+      });
+    }
     const durationMs = Date.now() - startedAt;
     const answerChars = answerText.length;
     const answerTokens = estimateTokenCount(answerMarkdown);
@@ -2091,7 +2131,7 @@ async function runRemoteBrowserMode(
       throw normalizedError;
     }
 
-    throw new BrowserAutomationError("Remote Chrome connection lost before Oracle finished.", {
+    throw new BrowserAutomationError("Remote Chrome connection lost before ask-pro finished.", {
       stage: "connection-lost",
       runtime: {
         chromeHost: host,
@@ -2403,7 +2443,7 @@ function describeDevtoolsFirewallHint(host: string, port: number): string | null
     `New-NetFirewallRule -DisplayName 'Chrome DevTools ${port}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${port}`,
     "New-NetFirewallRule -DisplayName 'Chrome DevTools (chrome.exe)' -Direction Inbound -Action Allow -Program 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' -Protocol TCP",
     "",
-    "Re-run the same oracle command after adding the rule.",
+    "Re-run the same ask-pro command after adding the rule.",
   ].join("\n");
 }
 

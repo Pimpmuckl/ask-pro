@@ -366,7 +366,25 @@ function buildModelSelectionExpression(
         const title = (document.title || '').toLowerCase();
         if (title.includes('temporary chat')) return true;
         const body = (document.body?.innerText || '').toLowerCase();
-        return body.includes('temporary chat');
+        if (body.includes('temporary chat')) return true;
+        const temporaryControls = Array.from(document.querySelectorAll('button, [role="button"], input[type="checkbox"]'));
+        return temporaryControls.some((node) => {
+          const label = [
+            node.getAttribute?.('aria-label') ?? '',
+            node.getAttribute?.('title') ?? '',
+            node.textContent ?? '',
+          ].join(' ').toLowerCase();
+          const pressed = (node.getAttribute?.('aria-pressed') ?? '').toLowerCase();
+          const checked = (node.getAttribute?.('aria-checked') ?? '').toLowerCase();
+          const inputChecked =
+            typeof HTMLInputElement !== 'undefined' &&
+            node instanceof HTMLInputElement &&
+            node.type === 'checkbox' &&
+            node.checked;
+          if (label.includes('turn off temporary chat')) return true;
+          if (label.includes('temporary chat') && (pressed === 'true' || checked === 'true' || inputChecked)) return true;
+          return false;
+        });
       };
       const collectAvailableOptions = () => {
         const menuRoots = Array.from(document.querySelectorAll(${menuContainerLiteral}));

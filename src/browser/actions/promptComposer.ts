@@ -10,7 +10,7 @@ import {
 import { delay } from "../utils.js";
 import { logDomFailure } from "../domDebug.js";
 import { buildClickDispatcher } from "./domEvents.js";
-import { BrowserAutomationError } from "../../oracle/errors.js";
+import { BrowserAutomationError } from "../errors.js";
 import {
   buildComposerSendClickExpression,
   buildComposerSendReadinessExpression,
@@ -28,7 +28,7 @@ const ENTER_KEY_EVENT = {
 const ENTER_KEY_TEXT = "\r";
 const PROMPT_TRUNCATION_CHECK_THRESHOLD = 20_000;
 const PROMPT_TRUNCATION_TOLERANCE = 500;
-const COMPOSER_HEALTH_SENTINEL = "__oracle_healthcheck__";
+const COMPOSER_HEALTH_SENTINEL = "__ask_pro_healthcheck__";
 
 interface ComposerSnapshot {
   editorText: string;
@@ -55,9 +55,7 @@ interface ComposerHealthState {
   href: string;
 }
 
-function normalizeComposerSnapshot(
-  value: Partial<ComposerSnapshot> | undefined,
-): ComposerSnapshot {
+function normalizeComposerSnapshot(value: Partial<ComposerSnapshot> | undefined): ComposerSnapshot {
   return {
     editorText: typeof value?.editorText === "string" ? value.editorText : "",
     fallbackValue: typeof value?.fallbackValue === "string" ? value.fallbackValue : "",
@@ -118,9 +116,7 @@ function buildComposerSnapshotExpression(): string {
   })()`;
 }
 
-async function readComposerSnapshot(
-  runtime: ChromeClient["Runtime"],
-): Promise<ComposerSnapshot> {
+async function readComposerSnapshot(runtime: ChromeClient["Runtime"]): Promise<ComposerSnapshot> {
   const result = await runtime.evaluate({
     expression: buildComposerSnapshotExpression(),
     returnByValue: true,
@@ -387,12 +383,15 @@ export async function submitPrompt(
   const trustedObservedLength = usedDirectDomWrite ? observedActive.length : observedLength;
   if (usedDirectDomWrite && trustedObservedLength === 0 && observedLength > 0) {
     await logDomFailure(runtime, logger, "dead-composer");
-    throw new BrowserAutomationError("Prompt text only reached the DOM fallback, not the active composer.", {
-      stage: "submit-prompt",
-      code: "dead-composer",
-      promptLength,
-      composerState: postVerification,
-    });
+    throw new BrowserAutomationError(
+      "Prompt text only reached the DOM fallback, not the active composer.",
+      {
+        stage: "submit-prompt",
+        code: "dead-composer",
+        promptLength,
+        composerState: postVerification,
+      },
+    );
   }
   if (isPromptTooLarge(promptLength, trustedObservedLength)) {
     // Learned: very large prompts can truncate silently; fail fast so we can fall back to file uploads.
@@ -844,19 +843,25 @@ async function verifyPromptCommitted(
     );
   }
   if (likelyDeadComposer) {
-    throw new BrowserAutomationError("Prompt did not appear because the ChatGPT composer is unresponsive.", {
+    throw new BrowserAutomationError(
+      "Prompt did not appear because the ChatGPT composer is unresponsive.",
+      {
+        stage: "submit-prompt",
+        code: "dead-composer",
+        timeoutMs,
+        composerState,
+      },
+    );
+  }
+  throw new BrowserAutomationError(
+    "Prompt did not appear in conversation before timeout (send may have failed).",
+    {
       stage: "submit-prompt",
-      code: "dead-composer",
+      code: "prompt-commit-timeout",
       timeoutMs,
       composerState,
-    });
-  }
-  throw new BrowserAutomationError("Prompt did not appear in conversation before timeout (send may have failed).", {
-    stage: "submit-prompt",
-    code: "prompt-commit-timeout",
-    timeoutMs,
-    composerState,
-  });
+    },
+  );
 }
 
 // biome-ignore lint/style/useNamingConvention: test-only export used in vitest suite

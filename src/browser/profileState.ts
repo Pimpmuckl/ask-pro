@@ -14,7 +14,7 @@ const DEVTOOLS_ACTIVE_PORT_RELATIVE_PATHS = [
 ] as const;
 
 const CHROME_PID_FILENAME = "chrome.pid";
-const ORACLE_PROFILE_LOCK_FILENAME = "oracle-automation.lock";
+const ORACLE_PROFILE_LOCK_FILENAME = "ask-pro-automation.lock";
 
 const execFileAsync = promisify(execFile);
 
@@ -151,7 +151,7 @@ export async function acquireProfileRunLock(
       };
       await mkdir(path.dirname(lockPath), { recursive: true });
       await writeFile(lockPath, JSON.stringify(payload), { encoding: "utf8", flag: "wx" });
-      options.logger?.(`Acquired Oracle profile lock at ${lockPath}`);
+      options.logger?.(`Acquired ask-pro profile lock at ${lockPath}`);
       return {
         path: lockPath,
         lockId,
@@ -168,7 +168,7 @@ export async function acquireProfileRunLock(
         await delay(200);
         existing = parseProfileRunLock(await readFile(lockPath, "utf8").catch(() => null));
         if (!existing) {
-          options.logger?.("Oracle profile lock unreadable; deleting lockfile.");
+          options.logger?.("ask-pro profile lock unreadable; deleting lockfile.");
           await rm(lockPath, { force: true }).catch(() => undefined);
           continue;
         }
@@ -180,14 +180,14 @@ export async function acquireProfileRunLock(
       if (!warned) {
         const waited = Math.round(timeoutMs / 1000);
         options.logger?.(
-          `Oracle profile lock held by pid ${existing.pid}; waiting up to ${waited}s.`,
+          `ask-pro profile lock held by pid ${existing.pid}; waiting up to ${waited}s.`,
         );
         warned = true;
       }
       const elapsed = Date.now() - startedAt;
       if (elapsed >= timeoutMs) {
         throw new Error(
-          `Oracle profile lock still held by pid ${existing.pid} after ${Math.round(elapsed / 1000)}s`,
+          `ask-pro profile lock still held by pid ${existing.pid} after ${Math.round(elapsed / 1000)}s`,
         );
       }
       await delay(Math.min(pollMs, timeoutMs - elapsed));
@@ -206,7 +206,7 @@ export async function releaseProfileRunLock(
       return;
     }
     await rm(lockPath, { force: true });
-    logger?.(`Released Oracle profile lock ${lockPath}`);
+    logger?.(`Released ask-pro profile lock ${lockPath}`);
   } catch {
     // best effort
   }
@@ -274,7 +274,7 @@ export async function shouldCleanupManualLoginProfileState(
 export async function cleanupStaleProfileState(
   userDataDir: string,
   logger?: ProfileStateLogger,
-  options: { lockRemovalMode?: "never" | "if_oracle_pid_dead" } = {},
+  options: { lockRemovalMode?: "never" | "if_ask_pro_pid_dead" } = {},
 ): Promise<void> {
   for (const candidate of getDevToolsActivePortPaths(userDataDir)) {
     try {
