@@ -1,6 +1,6 @@
 {
   "name": "ask_pro",
-  "version": "0.9.0",
+  "version": "0.1.0",
   "description": "Browser-backed ChatGPT Pro escalation for hard engineering questions.",
   "keywords": [],
   "homepage": "https://github.com/Pimpmuckl/ask-pro#readme",
@@ -82,7 +82,6 @@
     "esbuild": "^0.28.0",
     "oxfmt": "0.47.0",
     "oxlint": "^1.62.0",
-    "puppeteer-core": "^24.42.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5"

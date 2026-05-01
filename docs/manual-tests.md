@@ -109,30 +109,6 @@ Expected:
   `responseZip.status = "unavailable"`.
 - Generated zip contents are not executed.
 
-## Debugging A Live Browser
-
-When a run is active, browser metadata is stored in:
-
-```text
-.ask-pro/sessions/<session-id>/browser.json
-```
-
-Use the recorded Chrome port for DOM inspection with the local browser tools:
-
-```bash
-pnpm tsx scripts/browser-tools.ts inspect
-pnpm tsx scripts/browser-tools.ts eval --port <port> "({ href: location.href, title: document.title, lang: document.documentElement.lang })"
-```
-
-For answer-capture debugging:
-
-```bash
-pnpm tsx scripts/debug/extract-chatgpt-response.ts <port>
-```
-
-Record session IDs and pass/fail outcomes in PR notes so reviewers can audit the
-real browser behavior.
-
 ## Recent Smoke Runs
 
 - 2026-05-01 - `2026-05-01T165438-return-exactly-ask-pro-browser-login-ready`

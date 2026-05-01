@@ -14,7 +14,7 @@ const DEVTOOLS_ACTIVE_PORT_RELATIVE_PATHS = [
 ] as const;
 
 const CHROME_PID_FILENAME = "chrome.pid";
-const ORACLE_PROFILE_LOCK_FILENAME = "ask-pro-automation.lock";
+const ASK_PRO_PROFILE_LOCK_FILENAME = "ask-pro-automation.lock";
 
 const execFileAsync = promisify(execFile);
 
@@ -136,7 +136,7 @@ export async function acquireProfileRunLock(
     typeof options.pollMs === "number" && Number.isFinite(options.pollMs) && options.pollMs > 0
       ? options.pollMs
       : 1000;
-  const lockPath = path.join(userDataDir, ORACLE_PROFILE_LOCK_FILENAME);
+  const lockPath = path.join(userDataDir, ASK_PRO_PROFILE_LOCK_FILENAME);
   const lockId = randomUUID();
   const startedAt = Date.now();
   let warned = false;

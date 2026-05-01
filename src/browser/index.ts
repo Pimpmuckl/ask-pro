@@ -452,8 +452,8 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     } else {
       logger(
         manualLogin
-          ? "Skipping Chrome cookie sync (--browser-manual-login enabled); reuse the opened profile after signing in."
-          : "Skipping Chrome cookie sync (--browser-no-cookie-sync)",
+          ? "Skipping Chrome cookie sync because manual browser login is enabled; reuse the opened profile after signing in."
+          : "Skipping Chrome cookie sync because cookie sync is disabled.",
       );
     }
 
@@ -462,8 +462,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
       // Fail early so the user knows to sign in.
       throw new BrowserAutomationError(
         "No ChatGPT cookies were applied from your Chrome profile; cannot proceed in browser mode. " +
-          "Make sure ChatGPT is signed in in the selected profile, use --browser-manual-login / inline cookies, " +
-          "or retry with --browser-cookie-wait 5s if Keychain prompts are slow.",
+          "Make sure ChatGPT is signed in in the selected profile, then retry or use the manual-login path.",
         {
           stage: "execute-browser",
           details: {
@@ -651,7 +650,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         const base = error instanceof Error ? error.message : String(error);
         const hint =
           appliedCookies === 0
-            ? " No cookies were applied; log in to ChatGPT in Chrome or provide inline cookies (--browser-inline-cookies[(-file)] or ORACLE_BROWSER_COOKIES_JSON)."
+            ? " No cookies were applied; sign in to ChatGPT in the opened browser, then resume."
             : "";
         throw new Error(`${base}${hint}`);
       });

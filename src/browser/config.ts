@@ -48,11 +48,11 @@ export function resolveBrowserConfig(
   config: BrowserAutomationConfig | undefined,
 ): ResolvedBrowserConfig {
   const debugPortEnv = parseDebugPort(
-    process.env.ORACLE_BROWSER_PORT ?? process.env.ORACLE_BROWSER_DEBUG_PORT,
+    process.env.ASK_PRO_BROWSER_PORT ?? process.env.ASK_PRO_BROWSER_DEBUG_PORT,
   );
   const envAllowCookieErrors =
-    (process.env.ORACLE_BROWSER_ALLOW_COOKIE_ERRORS ?? "").trim().toLowerCase() === "true" ||
-    (process.env.ORACLE_BROWSER_ALLOW_COOKIE_ERRORS ?? "").trim() === "1";
+    (process.env.ASK_PRO_BROWSER_ALLOW_COOKIE_ERRORS ?? "").trim().toLowerCase() === "true" ||
+    (process.env.ASK_PRO_BROWSER_ALLOW_COOKIE_ERRORS ?? "").trim() === "1";
   const rawUrl = config?.chatgptUrl ?? config?.url ?? DEFAULT_BROWSER_CONFIG.url;
   const normalizedUrl = normalizeChatgptUrl(
     rawUrl ?? DEFAULT_BROWSER_CONFIG.url,

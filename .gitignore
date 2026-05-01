@@ -11,12 +11,12 @@ CONTEXT.zip
 ask-pro-response.zip
 *.tsbuildinfo
 tsconfig.tsbuildinfo
-vendor/oracle-notifier/OracleNotifier.app
-vendor/oracle-notifier/OracleIcon.icns
-vendor/oracle-notifier/OracleIcon.iconset
-oracle-*.tgz
-oracle-*.tgz.sha1
-oracle-*.tgz.sha256
+ask_pro-*.tgz
+ask_pro-*.tgz.sha1
+ask_pro-*.tgz.sha256
+ask-pro-*.tgz
+ask-pro-*.tgz.sha1
+ask-pro-*.tgz.sha256
 /.claude
 
 progress.md

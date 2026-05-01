@@ -18,7 +18,9 @@ export async function resolveAttachRunningConnection(
   const host = config.remoteChrome?.host ?? "127.0.0.1";
   const port = config.remoteChrome?.port ?? 9222;
   if (config.chromePath) {
-    logger("Note: --browser-chrome-path is ignored when --browser-attach-running is enabled.");
+    logger(
+      "Note: the explicit Chrome path is ignored while ask-pro is attaching to an already-running browser.",
+    );
   }
 
   logger(

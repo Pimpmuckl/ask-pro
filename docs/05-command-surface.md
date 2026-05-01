@@ -45,14 +45,6 @@ Optional file flags:
 ask-pro --files "src/**" --files "prisma/**" "<question>"
 ```
 
-Optional browser controls only for debugging:
-
-```bash
-ask-pro --headful "<question>"
-ask-pro --no-attach-running "<question>"
-ask-pro --timeout 180m "<question>"
-```
-
 Do not expose model/preset complexity in the normal path.
 
 ## Default behavior

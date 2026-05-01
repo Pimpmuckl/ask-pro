@@ -1,6 +1,6 @@
 # Agent mission
 
-Build `ask_pro`, a minimal fork of Oracle focused on one job:
+Build `ask_pro`, a minimal browser-backed ChatGPT Pro escalation tool focused on one job:
 
 ```text
 Agent invokes $ask-pro

@@ -17,9 +17,10 @@ matters, writes the prompt, and lets `ask-pro` handle bundling, redaction,
 browser submission, auth gating, waiting, harvesting, and optional generated zip
 extraction.
 
-## Install
+## Local Use
 
-From this repo:
+This package is not published yet. Use it from the repo while it is still in
+pre-release cleanup:
 
 ```bash
 pnpm install
@@ -27,10 +28,10 @@ pnpm run build
 pnpm start -- "Return exactly ASK_PRO_OK."
 ```
 
-After publishing, install the package globally and run the binary directly:
+For a shell-local binary during development:
 
 ```bash
-npm install -g ask_pro
+pnpm link --global
 ask-pro "Review the staged implementation plan."
 ```
 
@@ -142,7 +143,7 @@ files that matter to the question.
 
 ## Docs
 
-First-class project docs live under `docs/`:
+Project docs live under `docs/`:
 
 - `docs/01-agent-mission.md` for the product contract.
 - `docs/05-command-surface.md` for the supported CLI.
