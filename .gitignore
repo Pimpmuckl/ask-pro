@@ -15,3 +15,7 @@ oracle-*.tgz
 oracle-*.tgz.sha1
 oracle-*.tgz.sha256
 /.claude
+
+progress.md
+findings.md
+task_plan.md
