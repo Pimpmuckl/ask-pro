@@ -17,18 +17,22 @@ matters, writes the prompt, and lets `ask-pro` handle bundling, redaction,
 browser submission, auth gating, waiting, harvesting, and optional generated zip
 extraction.
 
-## Install
+## Manual Install
 
-This package is not published yet. Use it from the repo while it is still in
-pre-release cleanup:
+This package is not published yet. Clone the repo and use it locally while it
+is still in pre-release cleanup.
+
+### CLI
 
 ```bash
+git clone https://github.com/Pimpmuckl/ask-pro.git
+cd ask-pro
 pnpm install
 pnpm run build
 pnpm start -- "Return exactly ASK_PRO_OK."
 ```
 
-For a shell-local binary during development:
+For a shell-local binary:
 
 ```bash
 pnpm link --global
@@ -39,10 +43,16 @@ Requires Node 24+.
 
 ### Codex Plugin
 
-Installing the binary is separate from installing the Codex plugin. The plugin
-is what makes `$ask-pro` and `$ask-pro:ask-pro` appear in Codex.
+The CLI and Codex plugin are separate installs. The plugin is what makes
+`$ask-pro` and `$ask-pro:ask-pro` appear in Codex.
 
-For local development, add this repo as a local plugin in your home marketplace:
+Add the repo to your home marketplace file:
+
+```text
+~/.agents/plugins/marketplace.json
+```
+
+Example marketplace entry:
 
 ```json
 {
@@ -59,20 +69,47 @@ For local development, add this repo as a local plugin in your home marketplace:
 }
 ```
 
-Then enable it in your Codex config:
+If you do not already have a home marketplace, the full file can look like:
+
+```json
+{
+  "name": "local",
+  "interface": {
+    "displayName": "Local Plugins"
+  },
+  "plugins": [
+    {
+      "name": "ask-pro",
+      "source": {
+        "source": "local",
+        "path": "../../Code/ask-pro"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
+```
+
+Then enable the plugin in your Codex config:
 
 ```toml
-[plugins."ask-pro@jonat-local"]
+[plugins."ask-pro@local"]
 enabled = true
 ```
+
+Use your marketplace name in place of `local` if your marketplace uses another
+name.
 
 After restarting Codex, the skill list should include both `$ask-pro` and the
 plugin-qualified `$ask-pro:ask-pro`.
 
 An eventual `npm install -g ask_pro` will install the `ask-pro` CLI only. It
 will not automatically register the Codex plugin unless Codex adds an npm-based
-plugin installer or marketplace source. The npm tarball includes the plugin
-manifest and skill files so a future installer can consume them.
+plugin installer or marketplace source.
 
 ## First Login
 
