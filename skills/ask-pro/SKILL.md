@@ -1,3 +1,8 @@
+---
+name: ask-pro
+description: Escalate hard engineering questions to ChatGPT Pro through browser automation with focused repo context. Use when Codex needs a stronger external review, architecture plan, migration strategy, production-debugging second opinion, or when the user explicitly asks to use $ask-pro.
+---
+
 # $ask-pro
 
 Use `$ask-pro` to escalate hard engineering questions to ChatGPT Pro through browser automation.

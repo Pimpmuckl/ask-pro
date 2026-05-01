@@ -19,6 +19,7 @@
 ### Fixed
 
 - Plugin: normalize the Codex plugin identity to `ask-pro` so the local marketplace/config can load the skill.
+- Plugin: add required YAML frontmatter to the `$ask-pro` skill so Codex can load it.
 - Browser: recognize ChatGPT's composer-pill model picker and Configure / `Pro thinking effort` dialog so current ChatGPT UI changes do not break Pro browser runs.
 - Browser: force an English browser locale for ask-pro runs to reduce selector drift from localized ChatGPT UI.
 - Browser: detect the current top-right temporary-chat control shape instead of relying only on URL flags.
