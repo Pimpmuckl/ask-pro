@@ -237,12 +237,12 @@ async function ensureResponseZipManifest(sessionDir: string): Promise<void> {
 }
 
 function resolveResumeBrowserProfile(metadata: AskProBrowserMetadata): string {
+  const agentProfile = resolveStoredAgentProfile(metadata.agentId);
   if (metadata.profileDir && isAskProManagedBrowserProfileDir(metadata.profileDir)) {
     return metadata.profileDir;
   }
   if (hasLegacyNonManagedProfile(metadata)) return metadata.profileDir!;
 
-  const agentProfile = resolveStoredAgentProfile(metadata.agentId);
   if (agentProfile) return agentProfile;
   return defaultAskProBrowserProfileDir();
 }

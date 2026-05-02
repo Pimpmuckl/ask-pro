@@ -182,6 +182,46 @@ describe("ask-pro browser runner", () => {
     expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
   });
 
+  test("reattach validates stored agent id before accepting a managed profile path", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-invalid-managed-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review the invalid managed browser session.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        agentId: "../bad-agent",
+        profileDir: path.join(
+          os.homedir(),
+          ".agents",
+          "skills",
+          "ask-pro",
+          "agents",
+          "review-t1-6d908a4714",
+          "browser-profile",
+        ),
+        runtime: {
+          chromePort: 9666,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-invalid-managed",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      /stored ask-pro agent id is invalid/i,
+    );
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
+  });
+
   test("reattach keeps a safe recorded managed profile authoritative", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-managed-"));
     tempDirs.push(cwd);
