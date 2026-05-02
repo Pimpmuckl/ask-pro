@@ -64,7 +64,7 @@ describe("ask-pro browser runner", () => {
     });
   });
 
-  test("runs default ask-pro sessions with attach-to-running enabled", async () => {
+  test("runs default ask-pro sessions on the shared managed profile", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-default-"));
     tempDirs.push(cwd);
     const session = await createAskProSession({
@@ -79,7 +79,7 @@ describe("ask-pro browser runner", () => {
     const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
     expect(firstCall?.[0]).toMatchObject({
       config: {
-        attachRunning: true,
+        attachRunning: false,
         manualLoginProfileDir: expect.stringContaining(
           path.join(".agents", "skills", "ask-pro", "browser-profile"),
         ),

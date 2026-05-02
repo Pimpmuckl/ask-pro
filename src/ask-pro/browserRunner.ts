@@ -56,7 +56,7 @@ export async function runAskProBrowserSession({
       ],
       config: {
         manualLogin: true,
-        attachRunning: !agentId,
+        attachRunning: false,
         manualLoginProfileDir: browserProfile,
         manualLoginWaitMs: MANUAL_LOGIN_WAIT_MS,
         timeoutMs: DEFAULT_TIMEOUT_MS,
