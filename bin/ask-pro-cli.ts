@@ -88,7 +88,6 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`ask-pro harvest status update failed: ${message}`);
-      process.exitCode = 1;
     }
     return;
   }
