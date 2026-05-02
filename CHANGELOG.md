@@ -49,6 +49,8 @@
   before runtime metadata was saved.
 - Browser: preserve requested Extended Pro thinking across auth and submitted
   session resume paths.
+- CLI: persist requested `--extended` and `--temporary` modes in session status
+  so plain `--resume` preserves dry-run intent.
 - Browser: force an English browser locale for ask-pro runs to reduce selector
   drift from localized ChatGPT UI.
 - Browser: detect the current top-right temporary-chat control shape without

@@ -87,11 +87,18 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
   }
   if (options.resume !== undefined) {
     const { status } = await readAskProStatus({ cwd, sessionId: optionSessionId(options.resume) });
-    const resumeCommand = buildResumeCommand(status.sessionId, options, cwd);
+    const effectiveOptions = mergeStatusOptions(options, status);
+    const resumeCommand = buildResumeCommand(status.sessionId, effectiveOptions, cwd);
     if (resumeCommand !== status.resumeCommand) {
-      await updateAskProResumeCommand({ cwd, sessionId: status.sessionId, resumeCommand });
+      await updateAskProResumeCommand({
+        cwd,
+        sessionId: status.sessionId,
+        resumeCommand,
+        thinkingTime: effectiveOptions.extended ? "extended" : undefined,
+        temporary: effectiveOptions.temporary,
+      });
     }
-    await submitOrResumeBrowserSession(cwd, status.sessionId, options);
+    await submitOrResumeBrowserSession(cwd, status.sessionId, effectiveOptions);
     return;
   }
 
@@ -104,7 +111,13 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
   });
   const resumeCommand = buildResumeCommand(session.id, options, cwd);
   if (resumeCommand !== session.status.resumeCommand) {
-    await updateAskProResumeCommand({ cwd, sessionId: session.id, resumeCommand });
+    await updateAskProResumeCommand({
+      cwd,
+      sessionId: session.id,
+      resumeCommand,
+      thinkingTime: options.extended ? "extended" : undefined,
+      temporary: options.temporary,
+    });
     session.status.resumeCommand = resumeCommand;
   }
   console.log(`ask-pro session created: .ask-pro/sessions/${session.id}`);
@@ -200,9 +213,6 @@ function buildLauncherCommand(): string {
   if (sourceLauncher) {
     return sourceLauncher;
   }
-  if (process.env.npm_lifecycle_event === "start") {
-    return "npm exec --yes pnpm@10.33.2 -- start --";
-  }
   return "ask-pro";
 }
 
@@ -248,4 +258,15 @@ function printAuthInstructions(
 
 function quoteCommandArg(value: string): string {
   return `"${value.replace(/\\/g, "/").replace(/(["$`])/g, "\\$1")}"`;
+}
+
+function mergeStatusOptions(
+  options: AskProOptions,
+  status: { thinkingTime?: "extended"; temporary?: boolean },
+): AskProOptions {
+  return {
+    ...options,
+    extended: options.extended === true || status.thinkingTime === "extended",
+    temporary: options.temporary === true || status.temporary === true,
+  };
 }
