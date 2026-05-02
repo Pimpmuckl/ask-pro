@@ -55,7 +55,7 @@ export async function runAskProBrowserSession({
       ],
       config: {
         manualLogin: true,
-        attachRunning: false,
+        attachRunning: !agentId,
         manualLoginProfileDir: browserProfile,
         manualLoginWaitMs: MANUAL_LOGIN_WAIT_MS,
         timeoutMs: DEFAULT_TIMEOUT_MS,
@@ -162,7 +162,7 @@ export async function resumeAskProBrowserSession({
   const logger = buildAskProBrowserLogger(cwd, sessionId, verbose);
   const metadata = await readBrowserMetadata(paths.browser);
   const fallbackProfile = resolveResumeBrowserProfile(metadata);
-  const attachRunning = hasLegacyNonManagedProfile(metadata);
+  const attachRunning = !metadata.agentId;
   if (!metadata.runtime) {
     throw new Error(`session ${sessionId} has no saved browser runtime metadata`);
   }
@@ -247,7 +247,12 @@ function resolveResumeBrowserProfile(metadata: AskProBrowserMetadata): string {
   if (profileAgentId && agentProfile) {
     return profileDir!;
   }
-  if (profileDir && !profileAgentId && isAskProManagedBrowserProfileDir(profileDir)) {
+  if (
+    profileDir &&
+    !profileAgentId &&
+    !agentProfile &&
+    isAskProManagedBrowserProfileDir(profileDir)
+  ) {
     return profileDir;
   }
   if (hasLegacyNonManagedProfile(metadata)) return metadata.profileDir!;

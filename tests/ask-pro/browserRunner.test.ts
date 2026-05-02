@@ -56,8 +56,32 @@ describe("ask-pro browser runner", () => {
     const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
     expect(firstCall?.[0]).toMatchObject({
       config: {
+        attachRunning: false,
         manualLoginProfileDir: expect.stringMatching(
           /agents[\\/]+review-t1-[a-f0-9]{10}[\\/]+browser-profile$/,
+        ),
+      },
+    });
+  });
+
+  test("runs default ask-pro sessions with attach-to-running enabled", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-default-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review with the default profile.",
+      filePatterns: [],
+      dryRun: false,
+    });
+
+    await runAskProBrowserSession({ cwd, sessionId: session.id });
+
+    const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({
+      config: {
+        attachRunning: true,
+        manualLoginProfileDir: expect.stringContaining(
+          path.join(".agents", "skills", "ask-pro", "browser-profile"),
         ),
       },
     });
@@ -342,5 +366,42 @@ describe("ask-pro browser runner", () => {
       /does not match stored agent id/i,
     );
     expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
+  });
+
+  test("reattach falls back to the stored agent when profileDir is the shared default", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-shared-agent-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review the shared-default agent browser session.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        agentId: "review-t1-6d908a4714",
+        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        runtime: {
+          chromePort: 9888,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-shared-agent",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
+
+    const firstCall = resumeBrowserSessionMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[1]).toMatchObject({
+      attachRunning: false,
+      manualLoginProfileDir: expect.stringContaining(
+        path.join("agents", "review-t1-6d908a4714", "browser-profile"),
+      ),
+    });
   });
 });
