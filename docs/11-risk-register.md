@@ -37,8 +37,11 @@ Risk: Temporary Chat may not expose desired Pro model picker.
 
 Mitigation:
 
-- keep Temporary Chat behind explicit `--temporary`
-- keep model-picker failure actionable when Pro is hidden in Temporary Chat
+- default fresh runs to Temporary Chat, then retry in normal ChatGPT if Pro is
+  hidden there
+- keep `--temporary` strict for callers that require Temporary Chat
+- keep `--no-temporary` for normal ChatGPT retries
+- keep model-picker failure actionable when explicit Temporary Chat hides Pro
 - keep model-picker failure messages actionable if ChatGPT changes availability
 - keep session metadata
 

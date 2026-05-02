@@ -129,11 +129,11 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
     const MODEL_BUTTON_SELECTOR = ${modelButtonLiteral};
     const TARGET_LEVEL = ${targetLevelLiteral};
 
-    // English level token + observed Chinese variants.
+    // English level tokens plus observed localized variants.
     const LEVEL_TOKENS = {
       light: ['light', '轻'],
       standard: ['standard', '标准'],
-      extended: ['extended', '扩展', '深度', '加强'],
+      extended: ['extended', 'langer', '扩展', '深度', '加强'],
       heavy: ['heavy', '重度', '加重', '高'],
     };
     const targetTokens = LEVEL_TOKENS[TARGET_LEVEL] || [TARGET_LEVEL];
@@ -145,6 +145,8 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const normalize = (value) => (value || '')
       .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\\u0300-\\u036f]/g, '')
       .replace(/[^a-z0-9\\u4e00-\\u9fa5]+/g, ' ')
       .replace(/\\s+/g, ' ')
       .trim();
@@ -190,7 +192,9 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       return null;
     };
     const findOldEffortMenu = () => {
-      const menus = document.querySelectorAll(MENU_CONTAINER_SELECTOR + ', [role="group"]');
+      const menus = document.querySelectorAll(
+        MENU_CONTAINER_SELECTOR + ', [role="listbox"], [role="group"]'
+      );
       for (const menu of menus) {
         const label = menu.querySelector?.('.__menu-label, [class*="menu-label"]');
         if (normalize(label?.textContent ?? '').includes('thinking time')) return menu;
@@ -199,16 +203,26 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       }
       return null;
     };
+    const levelOptionScore = (node) => {
+      const text = normalize(node.textContent ?? '');
+      const aria = normalize(node.getAttribute?.('aria-label') ?? '');
+      const label = [text, aria].filter(Boolean).join(' ');
+      if (!matchesLevel(label)) return 0;
+      if (EFFORT_LABELS.has(text) || EFFORT_LABELS.has(aria)) return 500;
+      if (!text.includes('pro') && !text.includes('thinking') && !aria.includes('pro') && !aria.includes('thinking')) {
+        return 200;
+      }
+      return 120;
+    };
     const findOptionInMenu = (menu) => {
-      for (const item of menu.querySelectorAll(MENU_ITEM_SELECTOR)) {
-        if (
-          matchesLevel(item.textContent ?? '') ||
-          matchesLevel(item.getAttribute?.('aria-label') ?? '')
-        ) {
-          return item;
+      let best = null;
+      for (const item of menu.querySelectorAll(MENU_ITEM_SELECTOR + ', [role="option"]')) {
+        const score = levelOptionScore(item);
+        if (score > 0 && (!best || score > best.score)) {
+          best = { item, score };
         }
       }
-      return null;
+      return best?.item ?? null;
     };
 
     const oldChip = findOldChip();
@@ -217,6 +231,10 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       const start = performance.now();
       while (performance.now() - start < MAX_WAIT_MS) {
         await sleep(100);
+        const newerPickerEvidence = document.querySelectorAll(
+          '[data-model-picker-thinking-effort-action="true"], [data-testid="model-configure-modal"], [role="dialog"]',
+        );
+        if (newerPickerEvidence.length > 0) break;
         const menu = findOldEffortMenu();
         if (!menu) continue;
         const opt = findOptionInMenu(menu);
@@ -243,35 +261,84 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       const dialogs = Array.from(document.querySelectorAll('[role="dialog"], [data-state="open"]'));
       return dialogs.find((dialog) => {
         const text = normalize(dialog.textContent ?? '');
-        return text.includes('model') && text.includes('pro thinking effort');
+        return (
+          (text.includes('model') && text.includes('pro thinking effort')) ||
+          (text.includes('modell') && text.includes('denkaufwand pro')) ||
+          text.includes('denkaufwand pro')
+        );
       }) ?? null;
     };
     const interactiveIn = (root) =>
-      Array.from(root.querySelectorAll('button, [role="button"], [role="radio"], [role="combobox"], [role="option"], [role="menuitemradio"], [role="menuitem"]'));
-    const findProModelRow = (dialog) =>
-      interactiveIn(dialog).find((node) => {
+      Array.from(root.querySelectorAll('button, [role="button"], [role="radio"], [role="combobox"], [role="option"], [role="menuitemradio"], [role="menuitem"], [aria-haspopup]'));
+    const findProModelRow = (dialog) => {
+      let best = null;
+      for (const node of interactiveIn(dialog)) {
         const text = normalize(node.textContent ?? '');
+        const aria = normalize(node.getAttribute?.('aria-label') ?? '');
+        const testId = (node.getAttribute?.('data-testid') ?? '').toLowerCase();
         const role = node.getAttribute?.('role') ?? '';
-        return role === 'radio' && text.includes('pro') && !text.includes('thinking effort');
-      }) ?? null;
-    const findDialogEffortControl = (dialog) =>
-      interactiveIn(dialog).find((node) => {
+        const label = [text, aria, testId].filter(Boolean).join(' ');
+        const effortOnly = EFFORT_LABELS.has(text) || EFFORT_LABELS.has(aria);
+        const kindFromId = modelKindFromTestId(testId);
+        const kindFromText = modelKindFromLabel(label);
+        let score = 0;
+        if (kindFromId === 'pro') score += 500;
+        else if (kindFromId === 'thinking') score -= 500;
+        if (kindFromText === 'pro') score += 300;
+        else if (kindFromText === 'thinking') score -= 300;
+        if (label.includes('pro') && !label.includes('thinking model')) score += 120;
+        if (['radio', 'menuitemradio', 'option'].includes(role)) score += 100;
+        if (optionIsSelected(node)) score += 80;
+        if (effortOnly) score -= 500;
+        if (score > 0 && (!best || score > best.score)) best = { node, score };
+      }
+      return best?.node ?? null;
+    };
+    const findDialogEffortControl = (dialog, proRow) => {
+      let best = null;
+      for (const node of interactiveIn(dialog)) {
+        if (node === proRow) continue;
         const text = normalize(node.textContent ?? '');
+        const aria = normalize(node.getAttribute?.('aria-label') ?? '');
+        const title = normalize(node.getAttribute?.('title') ?? '');
+        const testId = normalize(node.getAttribute?.('data-testid') ?? '');
         const role = node.getAttribute?.('role') ?? '';
+        const label = [text, aria, title, testId].filter(Boolean).join(' ');
         const isEffortValue = EFFORT_LABELS.has(text) || ['standard', 'extended'].includes(text);
-        if (role === 'combobox' && isEffortValue) return true;
-        return false;
-      }) ?? null;
+        let score = 0;
+        if (label.includes('pro thinking effort') || label.includes('denkaufwand pro')) score += 600;
+        else if (label.includes('thinking effort') || label.includes('denkaufwand')) score += 400;
+        if (role === 'combobox' && (isEffortValue || label.includes('effort') || label.includes('denkaufwand'))) score += 300;
+        if ((role === 'button' || node.tagName === 'BUTTON') && (isEffortValue || label.includes('effort') || label.includes('denkaufwand'))) score += 200;
+        if (proRow?.contains?.(node)) score += 150;
+        if (isEffortValue) score += 100;
+        if (score > 0 && (!best || score > best.score)) best = { node, score };
+      }
+      return best?.node ?? null;
+    };
     const findConfigureOption = () =>
       Array.from(document.querySelectorAll('[data-testid="model-configure-modal"], [role="menuitem"], button, [role="button"]'))
         .find((node) => {
           const text = normalize(node.textContent ?? '');
           const testId = normalize(node.getAttribute?.('data-testid') ?? '');
-          return testId.includes('model configure modal') || text === 'configure' || text === 'configure...';
+          return testId.includes('model configure modal') || text === 'configure' || text === 'configure...' || text === 'konfigurieren' || text === 'konfigurieren...';
         }) ?? null;
     const findOpenEffortOption = () => {
+      const menus = Array.from(document.querySelectorAll(MENU_CONTAINER_SELECTOR + ', [role="listbox"], [role="group"]'));
+      let best = null;
+      for (const menu of menus) {
+        for (const node of menu.querySelectorAll('[role="option"], [role="menuitemradio"], [role="menuitem"], [role="radio"], button')) {
+          const score = levelOptionScore(node);
+          if (score > 0 && (!best || score > best.score)) best = { node, score };
+        }
+      }
+      if (best) return best.node;
       const candidates = Array.from(document.querySelectorAll('[role="option"], [role="menuitemradio"], [role="menuitem"], [role="radio"], button'));
-      return candidates.find((node) => matchesLevel(node.textContent ?? '') || matchesLevel(node.getAttribute?.('aria-label') ?? '')) ?? null;
+      for (const node of candidates) {
+        const score = levelOptionScore(node);
+        if (score > 0 && (!best || score > best.score)) best = { node, score };
+      }
+      return best?.node ?? null;
     };
 
     const modelBtn = findModelButton();
@@ -305,7 +372,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
         dispatchClickSequence(proRow);
         await sleep(STEP_WAIT_MS);
       }
-      const effortControl = findDialogEffortControl(intelligenceDialog);
+      const effortControl = findDialogEffortControl(intelligenceDialog, proRow);
       if (effortControl) {
         const currentLabel = effortControl.textContent?.trim?.() || null;
         if (currentLabel && matchesLevel(currentLabel)) {
@@ -394,7 +461,9 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
         const node = document.getElementById(id);
         if (node) return node;
       }
-      const menus = document.querySelectorAll(MENU_CONTAINER_SELECTOR + ', [role="group"]');
+      const menus = document.querySelectorAll(
+        MENU_CONTAINER_SELECTOR + ', [role="listbox"], [role="group"]'
+      );
       let best = null;
       for (const menu of menus) {
         if (menu === modelBtn || menu.contains(trailing)) continue;

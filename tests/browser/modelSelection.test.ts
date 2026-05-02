@@ -59,7 +59,7 @@ class FakeDocument extends EventTarget {
 
   constructor(
     private readonly modelCandidates: FakeElement[] = [],
-    private readonly menus: FakeElement[] = [],
+    readonly menus: FakeElement[] = [],
   ) {
     super();
   }
@@ -88,7 +88,7 @@ class FakeDocument extends EventTarget {
 const runModelSelectionExpression = async (
   targetModel: string,
   document: FakeDocument,
-  options: { fastTimeout?: boolean } = {},
+  options: { fastTimeout?: boolean; href?: string } = {},
 ) => {
   const expression = buildModelSelectionExpressionForTest(targetModel);
   let now = 0;
@@ -108,12 +108,12 @@ const runModelSelectionExpression = async (
       : performance,
     setTimeout: options.fastTimeout
       ? (callback: () => void) => {
-          callback();
+          setTimeout(callback, 0);
           return 0;
         }
       : setTimeout,
     URL,
-    window: { location: { href: "https://chatgpt.com/" } },
+    window: { location: { href: options.href ?? "https://chatgpt.com/" } },
   });
   return await new Script(expression).runInContext(context);
 };
@@ -145,12 +145,22 @@ describe("browser model selection matchers", () => {
     expect(expression).toContain("const isEffortOnly = label === 'pro' || label === 'thinking'");
     expect(expression).toContain("matchesVisibleAlias");
     expect(expression).toContain("best.score >= 100");
-    expect(expression).toContain("return { status: 'button-missing' }");
+    expect(expression).toContain(
+      "return { status: 'button-missing', hint: { temporaryChat: detectTemporaryChat() } }",
+    );
     expect(expression).toContain("candidateTextVersion && candidateTextVersion !== desiredVersion");
     expect(expression).toContain(
       "candidateTestIdVersion && candidateTestIdVersion !== desiredVersion",
     );
     expect(expression).toContain("!candidateVisibleAlias");
+  });
+
+  it("reports temporary chat evidence when the model button is missing", async () => {
+    const result = await runModelSelectionExpression("gpt-5.5-pro", new FakeDocument([]), {
+      href: "https://chatgpt.com/?temporary-chat=true",
+    });
+
+    expect(result).toEqual({ status: "button-missing", hint: { temporaryChat: true } });
   });
 
   it("does not accept a generic Pro pill as gpt-5.5-pro under select strategy", async () => {
@@ -245,6 +255,61 @@ describe("browser model selection matchers", () => {
     );
 
     expect(result).toEqual({ status: "switched", label: "Extended Pro" });
+  });
+
+  it("accepts German Länger Pro as the current GPT-5.5 Pro label", async () => {
+    const modelButton = new FakeElement("Länger Pro", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+
+    const result = await runModelSelectionExpression(
+      "gpt-5.5-pro",
+      new FakeDocument([modelButton]),
+    );
+
+    expect(result).toEqual({ status: "already-selected", label: "Länger Pro" });
+  });
+
+  it("accepts terminal Pro row evidence when the composer pill remains effort-only", async () => {
+    const modelButton = new FakeElement("Standard", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const document = new FakeDocument([modelButton]);
+    const option = new FakeElement(
+      "Pro Standard",
+      { "data-testid": "model-switcher-gpt-5-5-pro" },
+      [],
+      () => {
+        modelButton.textContent = "Standard";
+        option.setAttribute("aria-checked", "true");
+        document.menus.length = 0;
+      },
+    );
+    document.menus.push(new FakeElement("", { role: "menu" }, [option]));
+
+    const result = await runModelSelectionExpression("gpt-5.5-pro", document);
+
+    expect(result).toEqual({ status: "switched", label: "Standard" });
+  });
+
+  it("does not accept an ignored Pro row click while the composer pill remains effort-only", async () => {
+    const modelButton = new FakeElement("Standard", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const document = new FakeDocument([modelButton]);
+    const option = new FakeElement("Pro Standard", {
+      "data-testid": "model-switcher-gpt-5-5-pro",
+    });
+    document.menus.push(new FakeElement("", { role: "menu" }, [option]));
+
+    const result = await runModelSelectionExpression("gpt-5.5-pro", document, {
+      fastTimeout: true,
+    });
+
+    expect(result).toMatchObject({ status: "option-not-found" });
   });
 
   it("selects Thinking 5.5 from the current visible Thinking Heavy label", async () => {

@@ -85,8 +85,11 @@ pnpm start -- --verbose --files README.md "Return exactly one line and nothing e
 Expected:
 
 - Chrome opens with the ask-pro profile.
+- Fresh default runs open Temporary Chat first.
 - ChatGPT stays in English UI if possible.
 - The model picker can select the Pro path.
+- If Temporary Chat hides Pro for the current account/UI, the run retries in
+  normal ChatGPT.
 - If the current ChatGPT UI shows Configure / `Pro thinking effort`, the run
   selects `Extended` when available.
 - The top-right temporary-chat control does not confuse the run state.
@@ -130,3 +133,10 @@ Expected:
   repeated the Extended Pro live path, harvested
   `ASK_PRO_FINAL_EXTENDED_CLEANUP_OK`, and completed browser cleanup instead of
   leaving an ask-pro Chrome tab open.
+- 2026-05-02 - no-submit Playwright inspection of
+  `https://chatgpt.com/?temporary-chat=true` showed English UI, the active
+  Temporary Chat banner/control, and the picker row `Pro - Extended`.
+- 2026-05-02 - `2026-05-02T174832-return-exactly-one-line-and-nothing-else-ask-pro`
+  ran the default path in Temporary Chat, harvested
+  `ASK_PRO_TEMP_EXIT_CLEAN_OK`, and the CLI exited with code 0 after browser
+  cleanup.

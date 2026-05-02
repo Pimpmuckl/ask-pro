@@ -37,12 +37,25 @@
 
 - Browser: recognize ChatGPT's composer-pill model picker and Configure /
   `Pro thinking effort` dialog.
+- Browser: harden Pro model selection when ChatGPT keeps the composer pill on
+  an effort-only label such as `Standard`, `Extended`, or `Pro`.
+- Browser: harden Standard/Extended Pro thinking selection across Configure /
+  `Pro thinking effort` and selected-row trailing effort controls.
+- Browser: recognize the German ChatGPT picker labels observed in the ask-pro
+  profile, including `Länger Pro`, `Konfigurieren...`, and `Denkaufwand Pro`.
+- Browser: remove the local Chrome `AutomationControlled` feature flag from
+  ask-pro launches.
+- Browser: seed ask-pro-managed Chrome profiles with English-first
+  `accept_languages`, `selected_languages`, and spellcheck dictionaries before
+  launch.
 - Browser: request Extended Pro thinking when available.
 - Browser: default ask-pro runs to normal Pro thinking effort; use `--extended`
   to request Extended Pro thinking for deep, multi-hour escalations.
 - Browser: add `--temporary` to launch ask-pro runs with ChatGPT's
   `?temporary-chat=true` URL when ephemeral ChatGPT history is more important
   than closed-tab recovery.
+- Browser: make fresh ask-pro runs try Temporary Chat by default and retry in
+  normal ChatGPT when the default Temporary Chat path hides Pro.
 - Browser: persist the configured ChatGPT URL in browser metadata for relaunch
   resume paths.
 - Browser: make auth resume reopen the managed submission when login happened
@@ -53,6 +66,8 @@
   so plain `--resume` preserves dry-run intent.
 - CLI: add `--no-temporary` for retrying a Temporary Chat session in normal
   ChatGPT.
+- CLI: keep explicit `--temporary` strict so callers can require Temporary Chat
+  instead of accepting the default normal-ChatGPT fallback.
 - Browser: force an English browser locale for ask-pro runs to reduce selector
   drift from localized ChatGPT UI.
 - Browser: detect the current top-right temporary-chat control shape without

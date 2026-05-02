@@ -28,7 +28,7 @@ export async function ensureModelSelection(
         status: "option-not-found";
         hint?: { temporaryChat?: boolean; availableOptions?: string[] };
       }
-    | { status: "button-missing" }
+    | { status: "button-missing"; hint?: { temporaryChat?: boolean } }
     | undefined;
 
   switch (result?.status) {
@@ -53,7 +53,12 @@ export async function ensureModelSelection(
     }
     default: {
       await logDomFailure(Runtime, logger, "model-switcher-button");
-      throw new Error("Unable to locate the ChatGPT model selector button.");
+      const isTemporary = result?.hint?.temporaryChat ?? false;
+      const tempHint =
+        isTemporary && /\bpro\b/i.test(desiredModel)
+          ? " Temporary Chat mode is active; verify the model picker exposes Pro in the current account/UI."
+          : "";
+      throw new Error(`Unable to locate the ChatGPT model selector button.${tempHint}`);
     }
   }
 }
@@ -99,6 +104,8 @@ function buildModelSelectionExpression(
       }
       return value
         .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\\u0300-\\u036f]/g, '')
         .replace(/[^a-z0-9]+/g, ' ')
         .replace(/\\s+/g, ' ')
         .trim();
@@ -140,13 +147,42 @@ function buildModelSelectionExpression(
       return null;
     };
     ${buildModelPickerDomHelpers()}
+    const detectTemporaryChat = () => {
+      try {
+        const url = new URL(window.location.href);
+        const flag = (url.searchParams.get('temporary-chat') ?? '').toLowerCase();
+        if (flag === 'true' || flag === '1' || flag === 'yes') return true;
+      } catch {}
+      const title = (document.title || '').toLowerCase();
+      if (title.includes('temporary chat')) return true;
+      const body = (document.body?.innerText || '').toLowerCase();
+      if (body.includes('temporary chat')) return true;
+      const temporaryControls = Array.from(document.querySelectorAll('button, [role="button"], input[type="checkbox"]'));
+      return temporaryControls.some((node) => {
+        const label = [
+          node.getAttribute?.('aria-label') ?? '',
+          node.getAttribute?.('title') ?? '',
+          node.textContent ?? '',
+        ].join(' ').toLowerCase();
+        const pressed = (node.getAttribute?.('aria-pressed') ?? '').toLowerCase();
+        const checked = (node.getAttribute?.('aria-checked') ?? '').toLowerCase();
+        const inputChecked =
+          typeof HTMLInputElement !== 'undefined' &&
+          node instanceof HTMLInputElement &&
+          node.type === 'checkbox' &&
+          node.checked;
+        if (label.includes('turn off temporary chat')) return true;
+        if (label.includes('temporary chat') && (pressed === 'true' || checked === 'true' || inputChecked)) return true;
+        return false;
+      });
+    };
 
     const button = findModelButton();
     if (!button) {
       if (MODEL_STRATEGY === 'current') {
         return { status: 'already-selected', label: 'current model' };
       }
-      return { status: 'button-missing' };
+      return { status: 'button-missing', hint: { temporaryChat: detectTemporaryChat() } };
     }
 
     const closeMenu = () => {
@@ -357,35 +393,6 @@ function buildModelSelectionExpression(
 
     return new Promise((resolve) => {
       const start = performance.now();
-      const detectTemporaryChat = () => {
-        try {
-          const url = new URL(window.location.href);
-          const flag = (url.searchParams.get('temporary-chat') ?? '').toLowerCase();
-          if (flag === 'true' || flag === '1' || flag === 'yes') return true;
-        } catch {}
-        const title = (document.title || '').toLowerCase();
-        if (title.includes('temporary chat')) return true;
-        const body = (document.body?.innerText || '').toLowerCase();
-        if (body.includes('temporary chat')) return true;
-        const temporaryControls = Array.from(document.querySelectorAll('button, [role="button"], input[type="checkbox"]'));
-        return temporaryControls.some((node) => {
-          const label = [
-            node.getAttribute?.('aria-label') ?? '',
-            node.getAttribute?.('title') ?? '',
-            node.textContent ?? '',
-          ].join(' ').toLowerCase();
-          const pressed = (node.getAttribute?.('aria-pressed') ?? '').toLowerCase();
-          const checked = (node.getAttribute?.('aria-checked') ?? '').toLowerCase();
-          const inputChecked =
-            typeof HTMLInputElement !== 'undefined' &&
-            node instanceof HTMLInputElement &&
-            node.type === 'checkbox' &&
-            node.checked;
-          if (label.includes('turn off temporary chat')) return true;
-          if (label.includes('temporary chat') && (pressed === 'true' || checked === 'true' || inputChecked)) return true;
-          return false;
-        });
-      };
       const collectAvailableOptions = () => {
         const menuRoots = Array.from(document.querySelectorAll(${menuContainerLiteral}));
         const nodes = menuRoots.length > 0
@@ -429,11 +436,20 @@ function buildModelSelectionExpression(
             setTimeout(attempt, REOPEN_INTERVAL_MS / 2);
             return;
           }
-          // Wait for the top bar label to reflect the requested model; otherwise keep scanning.
+          // Newer ChatGPT builds may keep the composer pill as just "Standard",
+          // "Extended", or "Pro" after selecting a terminal Pro row. Require
+          // selected-state evidence when the composer remains effort-only.
           setTimeout(() => {
-            if (buttonMatchesTarget()) {
+            if (buttonMatchesTarget() || optionIsSelected(match.node)) {
               closeMenu();
               resolve({ status: 'switched', label: getButtonLabel() || match.label });
+              return;
+            }
+            if (performance.now() - start > MAX_WAIT_MS) {
+              resolve({
+                status: 'option-not-found',
+                hint: { temporaryChat: detectTemporaryChat(), availableOptions: collectAvailableOptions() },
+              });
               return;
             }
             attempt();

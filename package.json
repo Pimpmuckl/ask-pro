@@ -31,6 +31,7 @@
     "dist/src/browser/errors.js",
     "dist/src/browser/format.js",
     "dist/src/browser/index.js",
+    "dist/src/browser/language.js",
     "dist/src/browser/liveTabs.js",
     "dist/src/browser/modelStrategy.js",
     "dist/src/browser/pageActions.js",

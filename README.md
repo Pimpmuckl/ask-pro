@@ -179,16 +179,28 @@ ask-pro --extended "Review this architecture decision."
 Use `--extended` for difficult architecture questions, production-risk reviews,
 and implementation-plan packages where a multi-hour wait is acceptable.
 
-Temporary Chat is available as an explicit opt-in:
+By default, fresh runs open ChatGPT Temporary Chat first:
+
+```text
+https://chatgpt.com/?temporary-chat=true
+```
+
+If the current ChatGPT account/UI does not expose Pro in Temporary Chat,
+`ask-pro` automatically retries the fresh default run in normal ChatGPT. Use
+`--temporary` only when Temporary Chat is required and falling back to normal
+ChatGPT would be wrong:
 
 ```bash
 ask-pro --temporary "Review this sensitive migration plan."
 ```
 
-Use `--temporary` only when ephemeral ChatGPT history matters. Temporary Chat
-sessions are less recoverable if the browser or tab is closed before harvest,
-and some ChatGPT accounts may hide Pro models there. If that happens, retry the
-same session with `--no-temporary --resume <session-id>`.
+Temporary Chat sessions are less recoverable if the browser or tab is closed
+before harvest. To force a run or retry outside Temporary Chat, use
+`--no-temporary`:
+
+```bash
+ask-pro --no-temporary --resume <session-id>
+```
 
 ## Commands
 
@@ -207,8 +219,8 @@ Useful options:
 | `--harvest [session-id]` | Print harvested `ANSWER.md`.                                            |
 | `--copy [session-id]`    | Print the session prompt/copy target for manual fallback.               |
 | `--extended`             | Request Extended Pro thinking for deep, multi-hour escalations.         |
-| `--temporary`            | Start in ChatGPT Temporary Chat; less recoverable after tab loss.       |
-| `--no-temporary`         | Resume a session outside Temporary Chat.                                |
+| `--temporary`            | Require ChatGPT Temporary Chat; fail instead of falling back.           |
+| `--no-temporary`         | Start or resume outside Temporary Chat.                                 |
 | `--verbose`              | Print browser automation diagnostics.                                   |
 
 Examples:

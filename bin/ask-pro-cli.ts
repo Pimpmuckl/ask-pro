@@ -46,7 +46,7 @@ program
     "--extended",
     "request Extended Pro thinking; use only when a multi-hour wait is acceptable",
   )
-  .option("--temporary", "start the run in ChatGPT Temporary Chat")
+  .option("--temporary", "require ChatGPT Temporary Chat; default runs already try it first")
   .option("--no-temporary", "retry a session outside ChatGPT Temporary Chat")
   .addOption(new Option("--cwd <path>", "project working directory").hideHelp())
   .option("--verbose", "print browser automation diagnostics")

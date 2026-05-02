@@ -26,6 +26,7 @@ import {
 } from "./chromeLifecycle.js";
 import { resolveBrowserConfig } from "./config.js";
 import { defaultAskProBrowserProfileDir } from "./profilePaths.js";
+import { applyPageLanguageOverrides, seedChromeProfileLanguage } from "./language.js";
 import { syncCookies } from "./cookies.js";
 import { CHATGPT_URL } from "./constants.js";
 import { cleanupStaleProfileState } from "./profileState.js";
@@ -251,6 +252,7 @@ async function resumeBrowserSessionViaNewChrome(
   if (manualLogin) {
     await mkdir(userDataDir, { recursive: true });
   }
+  await seedChromeProfileLanguage(userDataDir, resolved.acceptLanguage, logger);
   const chrome = await launchChrome(resolved, userDataDir, logger);
   const chromeHost = (chrome as unknown as { host?: string }).host ?? "127.0.0.1";
   const client = await connectToChrome(chrome.port, logger, chromeHost);
@@ -261,6 +263,9 @@ async function resumeBrowserSessionViaNewChrome(
   }
   if (DOM && typeof DOM.enable === "function") {
     await DOM.enable();
+  }
+  if (resolved.acceptLanguage) {
+    await applyPageLanguageOverrides(client, resolved.acceptLanguage, logger);
   }
   if (!resolved.headless && resolved.hideWindow) {
     await hideChromeWindow(chrome, logger);
