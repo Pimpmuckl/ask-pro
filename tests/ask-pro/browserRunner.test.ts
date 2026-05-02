@@ -112,4 +112,42 @@ describe("ask-pro browser runner", () => {
       path.join("agents", "review-t1-59cd6bada6", "browser-profile"),
     );
   });
+
+  test("reattach ignores unsafe stored profile metadata", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-unsafe-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review the unsafe stored browser session.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        agentId: "../bad-agent",
+        profileDir: path.join(cwd, "other-agent-profile"),
+        runtime: {
+          chromePort: 9444,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-unsafe",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
+
+    const firstCall = resumeBrowserSessionMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[1]).toMatchObject({
+      manualLoginProfileDir: expect.stringContaining(
+        path.join(".agents", "skills", "ask-pro", "browser-profile"),
+      ),
+    });
+    const config = firstCall?.[1] as { manualLoginProfileDir?: string } | undefined;
+    expect(String(config?.manualLoginProfileDir)).not.toContain("other-agent-profile");
+  });
 });

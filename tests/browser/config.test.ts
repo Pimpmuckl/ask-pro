@@ -5,6 +5,7 @@ import { CHATGPT_URL } from "../../src/browser/constants.js";
 import {
   askProBrowserProfileDirForAgentId,
   defaultAskProBrowserProfileDir,
+  isAskProManagedBrowserProfileDir,
   resolveAskProAgentId,
 } from "../../src/browser/profilePaths.js";
 
@@ -92,6 +93,17 @@ describe("resolveBrowserConfig", () => {
     expect(() => askProBrowserProfileDirForAgentId("../review-t1-59cd6bada6")).toThrow(
       /stored ask-pro agent id is invalid/i,
     );
+  });
+
+  test("recognizes only managed browser profile directories", () => {
+    const agentProfile = askProBrowserProfileDirForAgentId("review-t1-59cd6bada6");
+
+    expect(isAskProManagedBrowserProfileDir(defaultAskProBrowserProfileDir())).toBe(true);
+    expect(isAskProManagedBrowserProfileDir(agentProfile)).toBe(true);
+    expect(isAskProManagedBrowserProfileDir(path.join(path.dirname(agentProfile), "other"))).toBe(
+      false,
+    );
+    expect(isAskProManagedBrowserProfileDir(path.join(process.cwd(), "profile"))).toBe(false);
   });
 
   test("rejects padded explicit agent ids instead of silently aliasing them", () => {

@@ -4,6 +4,7 @@ import { BrowserAutomationError } from "../browser/errors.js";
 import {
   askProBrowserProfileDirForAgentId,
   defaultAskProBrowserProfileDir,
+  isAskProManagedBrowserProfileDir,
   resolveAskProAgentId,
 } from "../browser/profilePaths.js";
 import { runBrowserMode, type BrowserRunResult } from "../browserMode.js";
@@ -159,10 +160,7 @@ export async function resumeAskProBrowserSession({
   const prompt = await readAskProPrompt({ cwd, sessionId });
   const logger = buildAskProBrowserLogger(cwd, sessionId, verbose);
   const metadata = await readBrowserMetadata(paths.browser);
-  const fallbackProfile =
-    metadata.profileDir ??
-    askProBrowserProfileDirForAgentId(metadata.agentId) ??
-    defaultAskProBrowserProfileDir();
+  const fallbackProfile = resolveResumeBrowserProfile(metadata);
   if (!metadata.runtime) {
     throw new Error(`session ${sessionId} has no saved browser runtime metadata`);
   }
@@ -234,6 +232,24 @@ async function ensureResponseZipManifest(sessionDir: string): Promise<void> {
         notes: ["Generated zip was unavailable; harvested markdown answer to ANSWER.md."],
       },
     });
+  }
+}
+
+function resolveResumeBrowserProfile(metadata: AskProBrowserMetadata): string {
+  const agentProfile = resolveStoredAgentProfile(metadata.agentId);
+  if (agentProfile) return agentProfile;
+  if (metadata.profileDir && isAskProManagedBrowserProfileDir(metadata.profileDir)) {
+    return metadata.profileDir;
+  }
+  return defaultAskProBrowserProfileDir();
+}
+
+function resolveStoredAgentProfile(agentId: string | null | undefined): string | null {
+  if (!agentId) return null;
+  try {
+    return askProBrowserProfileDirForAgentId(agentId);
+  } catch {
+    return null;
   }
 }
 

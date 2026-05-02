@@ -18,6 +18,23 @@ export function askProBrowserProfileDirForAgentId(agentId: string | null | undef
   return path.join(ASK_PRO_STATE_DIR, "agents", agentId, "browser-profile");
 }
 
+export function isAskProManagedBrowserProfileDir(profileDir: string): boolean {
+  const resolved = normalizeProfilePath(profileDir);
+  const defaultProfile = normalizeProfilePath(askProBrowserProfileDirForAgentId(null));
+  if (resolved === defaultProfile) return true;
+
+  const agentsRoot = normalizeProfilePath(path.join(ASK_PRO_STATE_DIR, "agents"));
+  const relative = path.relative(agentsRoot, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return false;
+
+  const parts = relative.split(path.sep);
+  return (
+    parts.length === 2 &&
+    RESOLVED_AGENT_ID_PATTERN.test(parts[0]!) &&
+    parts[1] === "browser-profile"
+  );
+}
+
 export function resolveAskProAgentId(env: NodeJS.ProcessEnv = process.env): string | null {
   const value = env.ASK_PRO_AGENT_ID;
   if (value === undefined) return null;
@@ -34,4 +51,9 @@ export function resolveAskProAgentId(env: NodeJS.ProcessEnv = process.env): stri
   const hash = createHash("sha256").update(raw).digest("hex").slice(0, 10);
   const prefix = raw.slice(0, 53).replace(/^[-_.]+|[-_.]+$/g, "") || "agent";
   return `${prefix}-${hash}`;
+}
+
+function normalizeProfilePath(profileDir: string): string {
+  const resolved = path.resolve(profileDir);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
