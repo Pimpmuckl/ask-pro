@@ -139,9 +139,12 @@ plugin installer or marketplace source.
 ~/.agents/skills/ask-pro/browser-profile
 ```
 
-For independent agents, set `ASK_PRO_AGENT_ID` before running `ask-pro`. Use a
-lowercase id containing only letters, numbers, `.`, `_`, or `-`. Each agent id
-gets its own persistent profile and profile lock:
+For ordinary single-agent use, leave `ASK_PRO_AGENT_ID` unset so runs reuse the
+shared persistent profile. For truly independent or concurrent agents, set a
+stable reusable `ASK_PRO_AGENT_ID` before running `ask-pro`. Use a lowercase id
+containing only letters, numbers, `.`, `_`, or `-`. Each new agent id gets its
+own persistent profile and profile lock, so throwaway ids may require another
+human login:
 
 ```powershell
 $env:ASK_PRO_AGENT_ID = "review-t1"

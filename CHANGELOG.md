@@ -25,6 +25,8 @@
 - Document the source-checkout CLI fallback for agents when `ask-pro` is not on
   `PATH`.
 - Add `ASK_PRO_AGENT_ID` support for per-agent persistent browser profiles.
+- Clarify that `ASK_PRO_AGENT_ID` should be unset for ordinary single-agent
+  use and stable/reusable for isolated agent profiles.
 - Add generated response zip discovery, download, validation, extraction, and
   `PRO_OUTPUT_MANIFEST.json` metadata.
 - Add a non-resubmitting `--resume` harvest path for submitted, waiting, and

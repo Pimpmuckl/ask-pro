@@ -24,6 +24,11 @@ This stores the persistent browser profile under
 `ASK_PRO_AGENT_ID` must be lowercase and may contain only letters, numbers,
 `.`, `_`, or `-`.
 
+Leave `ASK_PRO_AGENT_ID` unset for normal single-agent use. Set it only for
+concurrent or role-specific agents that need isolated browser profiles, and
+reuse stable ids. One-off ids create new Chrome profiles and may require a fresh
+human login.
+
 ## Avoid
 
 Do not use:

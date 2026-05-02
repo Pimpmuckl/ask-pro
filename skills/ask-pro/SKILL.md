@@ -41,9 +41,13 @@ By default, `ask-pro` uses normal Pro thinking effort. Add `--extended` only for
 mega-hard architecture questions, production-risk reviews, or implementation
 plan packages where a multi-hour wait is acceptable.
 
-For parallel or role-specific agents, set a stable lowercase `ASK_PRO_AGENT_ID`
-before running the CLI. Example: `ASK_PRO_AGENT_ID=review-t1 ask-pro ...`. Each
-agent id gets an isolated persistent browser profile.
+Do not set `ASK_PRO_AGENT_ID` for ordinary single-agent use; the shared
+`ask-pro` browser profile is already persistent. Set `ASK_PRO_AGENT_ID` only
+when separate agents truly need isolated browser profiles, such as concurrent
+review lanes. Use a stable reusable lowercase id like `review-t1`, not a
+one-off task slug, because each new id creates a new Chrome profile and may
+require the human to log in again. Example:
+`ASK_PRO_AGENT_ID=review-t1 ask-pro ...`.
 
 ## Prompt Shape
 
