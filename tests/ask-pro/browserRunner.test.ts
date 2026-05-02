@@ -93,6 +93,10 @@ describe("ask-pro browser runner", () => {
     expect(resumeBrowserSessionMock).toHaveBeenCalledTimes(1);
     const firstCall = resumeBrowserSessionMock.mock.calls[0] as unknown[] | undefined;
     expect(firstCall?.[0]).toMatchObject({ chromePort: 9222 });
+    expect(firstCall?.[1]).toMatchObject({
+      attachRunning: true,
+      manualLoginProfileDir: path.join(cwd, "profile"),
+    });
     const answer = await readAskProAnswer({ cwd, sessionId: session.id });
     expect(answer.answer).toBe("# Reattached\n");
     const { status } = await readAskProStatus({ cwd, sessionId: session.id });
@@ -182,5 +186,48 @@ describe("ask-pro browser runner", () => {
     });
     const config = firstCall?.[1] as { manualLoginProfileDir?: string } | undefined;
     expect(String(config?.manualLoginProfileDir)).not.toContain("other-agent-profile");
+  });
+
+  test("reattach keeps a safe recorded managed profile authoritative", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-managed-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review the saved managed browser session.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    const recordedProfile = path.join(
+      os.homedir(),
+      ".agents",
+      "skills",
+      "ask-pro",
+      "agents",
+      "review-t2-91dc99b944",
+      "browser-profile",
+    );
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        agentId: "review-t1-6d908a4714",
+        profileDir: recordedProfile,
+        runtime: {
+          chromePort: 9555,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-managed",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
+
+    const firstCall = resumeBrowserSessionMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[1]).toMatchObject({
+      manualLoginProfileDir: recordedProfile,
+    });
   });
 });
