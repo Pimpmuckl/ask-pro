@@ -56,8 +56,11 @@ export async function runAskProBrowserSession({
   const requestedThinkingTime = thinkingTime ?? metadata?.thinkingTime ?? "standard";
   const chatgptUrl =
     chatgptUrlOverride ??
-    metadata?.url ??
-    (temporary ? ASK_PRO_TEMPORARY_CHATGPT_URL : ASK_PRO_CHATGPT_URL);
+    (temporary === true
+      ? ASK_PRO_TEMPORARY_CHATGPT_URL
+      : temporary === false
+        ? ASK_PRO_CHATGPT_URL
+        : (metadata?.url ?? ASK_PRO_CHATGPT_URL));
   await fs.mkdir(browserProfile, { recursive: true });
   await updateAskProStatus({ cwd, sessionId, status: "BROWSER_STARTING" });
 

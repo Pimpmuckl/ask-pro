@@ -135,6 +135,36 @@ describe("ask-pro browser runner", () => {
     expect(metadata.url).toBe("https://chatgpt.com/?temporary-chat=true");
   });
 
+  test("fresh retry honors no-temporary over a stored temporary URL", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-no-temporary-retry-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Retry outside temporary chat.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "failed",
+        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        url: "https://chatgpt.com/?temporary-chat=true",
+      },
+    });
+
+    await runAskProBrowserSession({ cwd, sessionId: session.id, temporary: false });
+
+    const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({
+      config: {
+        url: "https://chatgpt.com/",
+      },
+    });
+  });
+
   test("reattaches submitted sessions without resubmitting", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-"));
     tempDirs.push(cwd);
