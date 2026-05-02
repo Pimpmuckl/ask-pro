@@ -16,7 +16,8 @@ minutes or longer for Pro thinking.
   ```
 
 - For agent-isolation checks, set `ASK_PRO_AGENT_ID` to a disposable value and
-  expect the browser profile under `~/.agents/skills/ask-pro/agents/<id>/`.
+  expect the browser profile under
+  `~/.agents/skills/ask-pro/agents/<id>-<hash>/browser-profile`.
 
 - Do not click ChatGPT's `Answer now` button during Pro thinking. That skips the
   long-thinking path this tool is trying to preserve.
