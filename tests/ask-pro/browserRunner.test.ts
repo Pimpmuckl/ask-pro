@@ -150,7 +150,7 @@ describe("ask-pro browser runner", () => {
     );
   });
 
-  test("reattach ignores unsafe stored profile metadata", async () => {
+  test("reattach rejects unsafe agent-scoped profile metadata", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-unsafe-"));
     tempDirs.push(cwd);
     const session = await createAskProSession({
@@ -176,16 +176,10 @@ describe("ask-pro browser runner", () => {
     });
     await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
 
-    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
-
-    const firstCall = resumeBrowserSessionMock.mock.calls[0] as unknown[] | undefined;
-    expect(firstCall?.[1]).toMatchObject({
-      manualLoginProfileDir: expect.stringContaining(
-        path.join(".agents", "skills", "ask-pro", "browser-profile"),
-      ),
-    });
-    const config = firstCall?.[1] as { manualLoginProfileDir?: string } | undefined;
-    expect(String(config?.manualLoginProfileDir)).not.toContain("other-agent-profile");
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      /stored ask-pro agent id is invalid/i,
+    );
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
   });
 
   test("reattach keeps a safe recorded managed profile authoritative", async () => {

@@ -257,11 +257,7 @@ function hasLegacyNonManagedProfile(metadata: AskProBrowserMetadata): boolean {
 
 function resolveStoredAgentProfile(agentId: string | null | undefined): string | null {
   if (!agentId) return null;
-  try {
-    return askProBrowserProfileDirForAgentId(agentId);
-  } catch {
-    return null;
-  }
+  return askProBrowserProfileDirForAgentId(agentId);
 }
 
 export class AskProNeedsAuthError extends Error {
