@@ -257,7 +257,6 @@ function resolveResumeBrowserProfile(metadata: AskProBrowserMetadata): string {
     return profileDir;
   }
   if (profileDir && isAskProStatePath(profileDir)) {
-    if (agentProfile) return agentProfile;
     throw new Error("Stored ask-pro profile path is invalid.");
   }
   if (hasLegacyNonManagedProfile(metadata)) return metadata.profileDir!;

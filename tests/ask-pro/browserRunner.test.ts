@@ -407,7 +407,7 @@ describe("ask-pro browser runner", () => {
     expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
   });
 
-  test("reattach falls back to the stored agent when profileDir is the shared default", async () => {
+  test("reattach rejects agent metadata paired with the shared default profile", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-shared-agent-"));
     tempDirs.push(cwd);
     const session = await createAskProSession({
@@ -433,14 +433,9 @@ describe("ask-pro browser runner", () => {
     });
     await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
 
-    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
-
-    const firstCall = resumeBrowserSessionMock.mock.calls[0] as unknown[] | undefined;
-    expect(firstCall?.[1]).toMatchObject({
-      attachRunning: false,
-      manualLoginProfileDir: expect.stringContaining(
-        path.join("agents", "review-t1-6d908a4714", "browser-profile"),
-      ),
-    });
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      /stored ask-pro profile path is invalid/i,
+    );
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
   });
 });
