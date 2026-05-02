@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import "dotenv/config";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { Command, Option } from "commander";
 import {
   createAskProSession,
+  getAskProSessionPaths,
+  type AskProStatusFile,
   readAskProAnswer,
   readAskProStatus,
   updateAskProResumeCommand,
@@ -14,6 +17,7 @@ import {
   resumeAskProBrowserSession,
   runAskProBrowserSession,
 } from "../src/ask-pro/browserRunner.js";
+import { renderToonRecord, type AskProToonFields } from "../src/ask-pro/toon.js";
 import { getCliVersion } from "../src/version.js";
 
 interface AskProOptions {
@@ -55,7 +59,11 @@ program
       await runAskPro(questionParts.join(" "), options);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`ask-pro: ${message}`);
+      writeToon("ask_pro_error", {
+        code: classifyCliError(message),
+        message,
+        action: "inspect_session",
+      });
       process.exitCode = 1;
     }
   });
@@ -66,15 +74,21 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
   const cwd = resolveProjectCwd(options);
   if (options.status !== undefined) {
     const { status } = await readAskProStatus({ cwd, sessionId: optionSessionId(options.status) });
-    console.log(JSON.stringify(status, null, 2));
+    printStatusRecord(status, {
+      profile: await readStatusBrowserProfile(cwd, status),
+      ...answerExtraForStatus(status, status.sessionId),
+    });
     return;
   }
   if (options.harvest !== undefined) {
     const result = await readAskProAnswer({ cwd, sessionId: optionSessionId(options.harvest) });
-    await updateAskProStatus({ cwd, sessionId: result.sessionId, status: "HARVESTED" });
-    console.log(`# ask-pro ${result.sessionId}`);
-    console.log("");
-    console.log(result.answer.trimEnd());
+    await writeStdout(result.answer);
+    try {
+      await updateAskProStatus({ cwd, sessionId: result.sessionId, status: "HARVESTED" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`ask-pro harvest status update failed: ${message}`);
+    }
     return;
   }
   if (options.copy !== undefined) {
@@ -82,8 +96,16 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
       cwd,
       sessionId: optionSessionId(options.copy),
     });
-    console.log(path.join(dir, "ANSWER.md"));
-    console.log(`session=${status.sessionId}`);
+    if (isAnswerBearingStatus(status)) {
+      writeToon("ask_pro", {
+        session: status.sessionId,
+        state: normalizeState(status.status),
+        target: path.join(dir, "ANSWER.md"),
+        action: "copy_target",
+      });
+    } else {
+      printStatusRecord(status, { profile: await readStatusBrowserProfile(cwd, status) });
+    }
     return;
   }
   if (options.resume !== undefined) {
@@ -129,13 +151,11 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
     session.status.resumeCommand = resumeCommand;
     session.status.harvestCommand = harvestCommand;
   }
-  console.log(`ask-pro session created: .ask-pro/sessions/${session.id}`);
-  console.log(`Status: ${session.status.status}`);
-  console.log(`Context files: ${session.manifest.includedFiles.length}`);
-  console.log(`Resume: ${session.status.resumeCommand}`);
-  if (!dryRun) {
-    await submitOrResumeBrowserSession(cwd, session.id, options);
+  if (dryRun) {
+    printStatusRecord(session.status, { files: session.manifest.includedFiles.length });
+    return;
   }
+  await submitOrResumeBrowserSession(cwd, session.id, options);
 }
 
 function collectFiles(value: string, previous: string[]): string[] {
@@ -153,7 +173,7 @@ async function submitOrResumeBrowserSession(
 ): Promise<void> {
   const { status } = await readAskProStatus({ cwd, sessionId });
   if (status.status === "COMPLETED" || status.status === "HARVESTED") {
-    console.log(`Pro response already harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
+    printStatusRecord(status, answerExtraForStatus(status, sessionId));
     return;
   }
   if (
@@ -162,7 +182,6 @@ async function submitOrResumeBrowserSession(
     status.status === "WAIT_TIMED_OUT" ||
     status.status === "NEEDS_USER_AUTH"
   ) {
-    console.log(`Reattaching to submitted ask-pro session: ${sessionId}`);
     try {
       await resumeAskProBrowserSession({
         cwd,
@@ -178,11 +197,11 @@ async function submitOrResumeBrowserSession(
       }
       throw error;
     }
-    console.log(`Pro response harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
+    const { status: completed } = await readAskProStatus({ cwd, sessionId });
+    printStatusRecord(completed, answerExtraForStatus(completed, sessionId));
     return;
   }
   try {
-    console.log("Opening ChatGPT Pro. Waiting with 180m budget after submission.");
     await runAskProBrowserSession({
       cwd,
       sessionId,
@@ -190,7 +209,8 @@ async function submitOrResumeBrowserSession(
       temporary: options.temporary,
       verbose: options.verbose,
     });
-    console.log(`Pro response harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
+    const { status: completed } = await readAskProStatus({ cwd, sessionId });
+    printStatusRecord(completed, answerExtraForStatus(completed, sessionId));
   } catch (error) {
     if (error instanceof AskProNeedsAuthError) {
       printAuthInstructions(sessionId, options, cwd, error);
@@ -255,24 +275,15 @@ function printAuthInstructions(
   cwd: string,
   error: AskProNeedsAuthError,
 ): void {
-  console.log("ChatGPT authentication is required.");
-  console.log("I opened a browser window. Please log into ChatGPT there.");
-  console.log("Do not paste credentials into this terminal or agent chat.");
   const resumeCommand = buildResumeCommand(sessionId, options, cwd);
-  console.log(`When the message composer is visible, run: ${resumeCommand}`);
-  console.log(
-    JSON.stringify(
-      {
-        status: "NEEDS_USER_AUTH",
-        sessionId,
-        reason: error.reason,
-        resumeCommand,
-        browserProfile: error.browserProfile,
-      },
-      null,
-      2,
-    ),
-  );
+  writeToon("ask_pro", {
+    session: sessionId,
+    state: "needs_auth",
+    reason: error.reason,
+    profile: collapseHome(error.browserProfile),
+    action: "human_login_then_resume",
+    resume: resumeCommand,
+  });
 }
 
 function quoteCommandArg(value: string): string {
@@ -292,4 +303,147 @@ function mergeStatusOptions(
     extended: options.extended === true || status.thinkingTime === "extended",
     temporary,
   };
+}
+
+function printStatusRecord(status: AskProStatusFile, extra: AskProToonFields = {}): void {
+  writeToon("ask_pro", {
+    session: status.sessionId,
+    state: normalizeState(status.status),
+    reason: status.reason,
+    thinking: status.thinkingTime ?? "standard",
+    temporary: normalizeTemporary(status.temporary),
+    action: actionForStatus(status),
+    resume: shouldPrintResume(status) ? status.resumeCommand : undefined,
+    harvest: shouldPrintHarvest(status) ? status.harvestCommand : undefined,
+    ...extra,
+  });
+}
+
+function writeToon(name: string, fields: AskProToonFields): void {
+  process.stdout.write(`${renderToonRecord(name, fields)}\n`);
+}
+
+async function writeStdout(value: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    process.stdout.write(value, (error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+function normalizeState(status: AskProStatusFile["status"]): string {
+  if (status === "NEEDS_USER_AUTH") return "needs_auth";
+  return status.toLowerCase();
+}
+
+function normalizeTemporary(temporary: boolean | undefined): string {
+  if (temporary === true) return "strict";
+  if (temporary === false) return "off";
+  return "default";
+}
+
+function actionForStatus(status: AskProStatusFile): string {
+  switch (status.status) {
+    case "DRY_RUN_COMPLETE":
+    case "READY_TO_SUBMIT":
+    case "WAIT_TIMED_OUT":
+    case "FAILED":
+      return "resume";
+    case "NEEDS_USER_AUTH":
+      return "human_login_then_resume";
+    case "COMPLETED":
+    case "READY_TO_HARVEST":
+      return "harvest";
+    case "HARVESTED":
+      return "read_answer";
+    case "SUBMITTED":
+    case "WAITING":
+    case "BROWSER_STARTING":
+    case "CHECKING_AUTH":
+    case "AUTH_OK":
+    case "SUBMITTING":
+      return "wait";
+    case "CREATED":
+    case "CONTEXT_READY":
+      return "none";
+  }
+}
+
+function shouldPrintResume(status: AskProStatusFile): boolean {
+  return [
+    "BROWSER_STARTING",
+    "CHECKING_AUTH",
+    "AUTH_OK",
+    "SUBMITTING",
+    "DRY_RUN_COMPLETE",
+    "SUBMITTED",
+    "WAITING",
+    "READY_TO_SUBMIT",
+    "NEEDS_USER_AUTH",
+    "WAIT_TIMED_OUT",
+    "FAILED",
+  ].includes(status.status);
+}
+
+function shouldPrintHarvest(status: AskProStatusFile): boolean {
+  return ["COMPLETED", "READY_TO_HARVEST"].includes(status.status);
+}
+
+function answerPath(sessionId: string): string {
+  return `.ask-pro/sessions/${sessionId}/ANSWER.md`;
+}
+
+function answerExtraForStatus(status: AskProStatusFile, sessionId: string): AskProToonFields {
+  return isAnswerBearingStatus(status) ? { answer: answerPath(sessionId) } : {};
+}
+
+function isAnswerBearingStatus(status: AskProStatusFile): boolean {
+  return ["COMPLETED", "READY_TO_HARVEST", "HARVESTED"].includes(status.status);
+}
+
+async function readStatusBrowserProfile(
+  cwd: string,
+  status: AskProStatusFile,
+): Promise<string | undefined> {
+  if (status.status !== "NEEDS_USER_AUTH") {
+    return undefined;
+  }
+  try {
+    const paths = getAskProSessionPaths(cwd, status.sessionId);
+    const raw = await fs.readFile(paths.browser, "utf8");
+    const metadata = JSON.parse(raw) as { profileDir?: unknown };
+    return typeof metadata.profileDir === "string" ? collapseHome(metadata.profileDir) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function collapseHome(filePath: string): string {
+  const home = process.env.HOME || process.env.USERPROFILE;
+  if (!home) return filePath;
+  const resolvedHome = path.resolve(home);
+  const resolvedPath = path.resolve(filePath);
+  if (resolvedPath === resolvedHome) return "~";
+  if (resolvedPath.startsWith(`${resolvedHome}${path.sep}`)) {
+    return `~${path.sep}${path.relative(resolvedHome, resolvedPath)}`;
+  }
+  return filePath;
+}
+
+function classifyCliError(message: string): string {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("requires a question") || normalized.includes("no ask-pro sessions")) {
+    return "usage";
+  }
+  if (normalized.includes("auth") || normalized.includes("login")) {
+    return "auth_required";
+  }
+  if (normalized.includes("browser") || normalized.includes("chatgpt")) {
+    return "browser_failed";
+  }
+  return "failed";
 }
