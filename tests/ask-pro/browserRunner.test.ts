@@ -285,6 +285,45 @@ describe("ask-pro browser runner", () => {
     expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
   });
 
+  test("reattach rejects malformed profile paths under the ask-pro state root", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-malformed-state-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review the malformed managed-root browser session.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        profileDir: path.join(
+          os.homedir(),
+          ".agents",
+          "skills",
+          "ask-pro",
+          "agents",
+          "review-t1",
+          "browser-profile",
+        ),
+        runtime: {
+          chromePort: 9778,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-malformed-state",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      /stored ask-pro profile path is invalid/i,
+    );
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
+  });
+
   test("reattach keeps a safe recorded managed profile authoritative", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-managed-"));
     tempDirs.push(cwd);

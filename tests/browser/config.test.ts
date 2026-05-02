@@ -7,6 +7,7 @@ import {
   askProBrowserProfileDirForAgentId,
   defaultAskProBrowserProfileDir,
   isAskProManagedBrowserProfileDir,
+  isAskProStatePath,
   resolveAskProAgentId,
 } from "../../src/browser/profilePaths.js";
 
@@ -104,6 +105,8 @@ describe("resolveBrowserConfig", () => {
     expect(isAskProManagedBrowserProfileDir(path.join(process.cwd(), "profile"))).toBe(false);
     expect(askProAgentIdForManagedBrowserProfileDir(agentProfile)).toBe("review-t1-59cd6bada6");
     expect(askProAgentIdForManagedBrowserProfileDir(defaultAskProBrowserProfileDir())).toBeNull();
+    expect(isAskProStatePath(path.join(path.dirname(agentProfile), "other"))).toBe(true);
+    expect(isAskProStatePath(path.join(process.cwd(), "profile"))).toBe(false);
   });
 
   test("rejects padded explicit agent ids instead of silently aliasing them", () => {

@@ -6,6 +6,7 @@ import {
   askProBrowserProfileDirForAgentId,
   defaultAskProBrowserProfileDir,
   isAskProManagedBrowserProfileDir,
+  isAskProStatePath,
   resolveAskProAgentId,
 } from "../browser/profilePaths.js";
 import { runBrowserMode, type BrowserRunResult } from "../browserMode.js";
@@ -255,6 +256,10 @@ function resolveResumeBrowserProfile(metadata: AskProBrowserMetadata): string {
   ) {
     return profileDir;
   }
+  if (profileDir && isAskProStatePath(profileDir)) {
+    if (agentProfile) return agentProfile;
+    throw new Error("Stored ask-pro profile path is invalid.");
+  }
   if (hasLegacyNonManagedProfile(metadata)) return metadata.profileDir!;
 
   if (agentProfile) return agentProfile;
@@ -263,9 +268,7 @@ function resolveResumeBrowserProfile(metadata: AskProBrowserMetadata): string {
 
 function hasLegacyNonManagedProfile(metadata: AskProBrowserMetadata): boolean {
   return Boolean(
-    metadata.profileDir &&
-    !metadata.agentId &&
-    !isAskProManagedBrowserProfileDir(metadata.profileDir),
+    metadata.profileDir && !metadata.agentId && !isAskProStatePath(metadata.profileDir),
   );
 }
 

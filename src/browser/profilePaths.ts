@@ -25,6 +25,13 @@ export function isAskProManagedBrowserProfileDir(profileDir: string): boolean {
   return askProAgentIdForManagedBrowserProfileDir(profileDir) !== null;
 }
 
+export function isAskProStatePath(profileDir: string): boolean {
+  const resolved = normalizeProfilePath(profileDir);
+  const stateRoot = normalizeProfilePath(ASK_PRO_STATE_DIR);
+  const relative = path.relative(stateRoot, resolved);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 export function askProAgentIdForManagedBrowserProfileDir(profileDir: string): string | null {
   const resolved = normalizeProfilePath(profileDir);
   const agentsRoot = normalizeProfilePath(path.join(ASK_PRO_STATE_DIR, "agents"));
