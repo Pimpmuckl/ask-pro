@@ -62,17 +62,14 @@ describe("resolveBrowserConfig", () => {
     expect(resolved.manualLoginProfileDir).toBe(defaultAskProBrowserProfileDir());
   });
 
-  test("uses an isolated browser profile when ASK_PRO_AGENT_ID is set", () => {
+  test("keeps ASK_PRO_AGENT_ID out of shared browser config defaults", () => {
     vi.stubEnv("ASK_PRO_AGENT_ID", "review-t1-windows");
     const resolved = resolveBrowserConfig({ manualLogin: true });
-    const profileDir = defaultAskProBrowserProfileDir();
 
     const agentId = resolveAskProAgentId();
     expect(agentId).toMatch(/^review-t1-windows-[a-f0-9]{10}$/);
-    expect(resolved.manualLoginProfileDir).toBe(profileDir);
-    expect(profileDir).toContain(
-      path.join(".agents", "skills", "ask-pro", "agents", agentId!, "browser-profile"),
-    );
+    expect(resolved.manualLoginProfileDir).toBe(defaultAskProBrowserProfileDir());
+    expect(resolved.manualLoginProfileDir).not.toContain(path.join("agents", agentId!));
   });
 
   test("keeps colliding agent slugs isolated with a stable hash suffix", () => {

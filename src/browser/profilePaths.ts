@@ -5,9 +5,8 @@ import path from "node:path";
 const ASK_PRO_STATE_DIR = path.join(os.homedir(), ".agents", "skills", "ask-pro");
 const RESOLVED_AGENT_ID_PATTERN = /^[a-z0-9._-]+-[a-f0-9]{10}$/;
 
-export function defaultAskProBrowserProfileDir(env: NodeJS.ProcessEnv = process.env): string {
-  const agentId = resolveAskProAgentId(env);
-  return askProBrowserProfileDirForAgentId(agentId);
+export function defaultAskProBrowserProfileDir(): string {
+  return askProBrowserProfileDirForAgentId(null);
 }
 
 export function askProBrowserProfileDirForAgentId(agentId: string | null | undefined): string {

@@ -37,7 +37,7 @@ export async function runAskProBrowserSession({
   const paths = getAskProSessionPaths(cwd, sessionId);
   const prompt = await readAskProPrompt({ cwd, sessionId });
   const agentId = resolveAskProAgentId();
-  const browserProfile = defaultAskProBrowserProfileDir();
+  const browserProfile = askProBrowserProfileDirForAgentId(agentId);
   await fs.mkdir(browserProfile, { recursive: true });
   await updateAskProStatus({ cwd, sessionId, status: "BROWSER_STARTING" });
 

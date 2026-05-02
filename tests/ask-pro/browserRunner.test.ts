@@ -14,22 +14,55 @@ const resumeBrowserSessionMock = vi.fn(async () => ({
   answerText: "reattached answer",
   answerMarkdown: "# Reattached\n",
 }));
+const runBrowserModeMock = vi.fn(async () => ({
+  answerText: "agent answer",
+  answerMarkdown: "# Agent\n",
+  browserTransport: "launched",
+}));
 
 vi.mock("../../src/browser/reattach.js", () => ({
   resumeBrowserSession: resumeBrowserSessionMock,
 }));
+vi.mock("../../src/browserMode.js", () => ({
+  runBrowserMode: runBrowserModeMock,
+}));
 
-const { resumeAskProBrowserSession } = await import("../../src/ask-pro/browserRunner.js");
+const { resumeAskProBrowserSession, runAskProBrowserSession } =
+  await import("../../src/ask-pro/browserRunner.js");
 
 const tempDirs: string[] = [];
 
 afterEach(async () => {
   resumeBrowserSessionMock.mockClear();
+  runBrowserModeMock.mockClear();
   vi.unstubAllEnvs();
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
 describe("ask-pro browser runner", () => {
+  test("runs ask-pro sessions with the explicit agent profile", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-agent-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review with the agent profile.",
+      filePatterns: [],
+      dryRun: false,
+    });
+
+    vi.stubEnv("ASK_PRO_AGENT_ID", "review-t1");
+    await runAskProBrowserSession({ cwd, sessionId: session.id });
+
+    const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({
+      config: {
+        manualLoginProfileDir: expect.stringMatching(
+          /agents[\\/]+review-t1-[a-f0-9]{10}[\\/]+browser-profile$/,
+        ),
+      },
+    });
+  });
+
   test("reattaches submitted sessions without resubmitting", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-"));
     tempDirs.push(cwd);
