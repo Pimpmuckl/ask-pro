@@ -44,7 +44,8 @@ plan packages where a multi-hour wait is acceptable.
 Temporary Chat is opt-in. Add `--temporary` only when ephemeral ChatGPT history
 matters and weaker recovery after browser/tab loss is acceptable. If Pro is
 hidden in Temporary Chat for the current account, the model-picker error should
-say so and the agent should retry without `--temporary`.
+say so and the agent should retry the same session with
+`--no-temporary --resume <session-id>`.
 
 Do not set `ASK_PRO_AGENT_ID` for ordinary single-agent use; the shared
 `ask-pro` browser profile is already persistent. Set `ASK_PRO_AGENT_ID` only

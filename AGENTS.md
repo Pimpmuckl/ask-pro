@@ -6,7 +6,7 @@ ask_pro-specific notes:
   reduced to the V1 ask-pro surface.
 - Keep the CLI small: `ask-pro "<question>"`, `--files`, `--dry-run`,
   `--resume`, `--status`, `--harvest`, `--copy`, `--extended`, `--temporary`,
-  and `--verbose`.
+  `--no-temporary`, and `--verbose`.
 - Browser auth is human-controlled. Never ask for, type, read, or log passwords,
   MFA codes, recovery codes, session cookies, or raw auth tokens.
 - Browser “Pro thinking” gate: never click or auto-click ChatGPT's `Answer now`

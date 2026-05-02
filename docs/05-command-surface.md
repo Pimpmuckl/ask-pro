@@ -56,6 +56,7 @@ ask-pro --harvest [session-id]
 ask-pro --copy [session-id]
 ask-pro --extended "<question>"
 ask-pro --temporary "<question>"
+ask-pro --no-temporary --resume [session-id]
 ```
 
 Optional file flags:
@@ -70,7 +71,7 @@ and implementation-plan package questions where a multi-hour wait is acceptable.
 `--temporary` is the explicit Temporary Chat opt-in. Use it only when ephemeral
 ChatGPT history matters and the caller accepts weaker recovery if the browser
 or tab is closed before harvest. If the current account hides Pro models in
-Temporary Chat, retry without `--temporary`.
+Temporary Chat, retry the same session with `--no-temporary --resume <id>`.
 
 ## Default behavior
 

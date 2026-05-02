@@ -187,7 +187,8 @@ ask-pro --temporary "Review this sensitive migration plan."
 
 Use `--temporary` only when ephemeral ChatGPT history matters. Temporary Chat
 sessions are less recoverable if the browser or tab is closed before harvest,
-and some ChatGPT accounts may hide Pro models there.
+and some ChatGPT accounts may hide Pro models there. If that happens, retry the
+same session with `--no-temporary --resume <session-id>`.
 
 ## Commands
 
@@ -207,6 +208,7 @@ Useful options:
 | `--copy [session-id]`    | Print the session prompt/copy target for manual fallback.               |
 | `--extended`             | Request Extended Pro thinking for deep, multi-hour escalations.         |
 | `--temporary`            | Start in ChatGPT Temporary Chat; less recoverable after tab loss.       |
+| `--no-temporary`         | Resume a session outside Temporary Chat.                                |
 | `--verbose`              | Print browser automation diagnostics.                                   |
 
 Examples:

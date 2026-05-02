@@ -28,6 +28,7 @@ describe("ask-pro cli", () => {
 
     expect(stdout).toContain("--extended");
     expect(stdout).toContain("--temporary");
+    expect(stdout).toContain("--no-temporary");
     expect(stdout).toContain("multi-hour wait");
   }, 30000);
 
@@ -137,6 +138,9 @@ describe("ask-pro cli", () => {
     expect(JSON.parse(statusRaw)).toMatchObject({
       resumeCommand: expect.stringMatching(
         /^npm exec --yes pnpm@10\.33\.2 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --extended --resume /,
+      ),
+      harvestCommand: expect.stringMatching(
+        /^npm exec --yes pnpm@10\.33\.2 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --harvest /,
       ),
     });
   }, 30000);

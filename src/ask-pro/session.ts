@@ -239,12 +239,14 @@ export async function updateAskProResumeCommand({
   cwd,
   sessionId,
   resumeCommand,
+  harvestCommand,
   thinkingTime,
   temporary,
 }: {
   cwd: string;
   sessionId: string;
   resumeCommand: string;
+  harvestCommand?: string;
   thinkingTime?: "extended";
   temporary?: boolean;
 }): Promise<AskProStatusFile> {
@@ -253,6 +255,7 @@ export async function updateAskProResumeCommand({
   const next: AskProStatusFile = {
     ...current,
     resumeCommand,
+    harvestCommand: harvestCommand ?? current.harvestCommand,
     ...(thinkingTime ? { thinkingTime } : {}),
     ...(temporary !== undefined ? { temporary } : {}),
     updatedAt: new Date().toISOString(),

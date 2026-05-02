@@ -47,6 +47,7 @@ program
     "request Extended Pro thinking; use only when a multi-hour wait is acceptable",
   )
   .option("--temporary", "start the run in ChatGPT Temporary Chat")
+  .option("--no-temporary", "retry a session outside ChatGPT Temporary Chat")
   .addOption(new Option("--cwd <path>", "project working directory").hideHelp())
   .option("--verbose", "print browser automation diagnostics")
   .action(async (questionParts: string[], options: AskProOptions) => {
@@ -89,11 +90,13 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
     const { status } = await readAskProStatus({ cwd, sessionId: optionSessionId(options.resume) });
     const effectiveOptions = mergeStatusOptions(options, status);
     const resumeCommand = buildResumeCommand(status.sessionId, effectiveOptions, cwd);
-    if (resumeCommand !== status.resumeCommand) {
+    const harvestCommand = buildHarvestCommand(status.sessionId, cwd);
+    if (resumeCommand !== status.resumeCommand || harvestCommand !== status.harvestCommand) {
       await updateAskProResumeCommand({
         cwd,
         sessionId: status.sessionId,
         resumeCommand,
+        harvestCommand,
         thinkingTime: effectiveOptions.extended ? "extended" : undefined,
         temporary: effectiveOptions.temporary,
       });
@@ -110,15 +113,21 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
     dryRun,
   });
   const resumeCommand = buildResumeCommand(session.id, options, cwd);
-  if (resumeCommand !== session.status.resumeCommand) {
+  const harvestCommand = buildHarvestCommand(session.id, cwd);
+  if (
+    resumeCommand !== session.status.resumeCommand ||
+    harvestCommand !== session.status.harvestCommand
+  ) {
     await updateAskProResumeCommand({
       cwd,
       sessionId: session.id,
       resumeCommand,
+      harvestCommand,
       thinkingTime: options.extended ? "extended" : undefined,
       temporary: options.temporary,
     });
     session.status.resumeCommand = resumeCommand;
+    session.status.harvestCommand = harvestCommand;
   }
   console.log(`ask-pro session created: .ask-pro/sessions/${session.id}`);
   console.log(`Status: ${session.status.status}`);
@@ -196,14 +205,24 @@ function requestedThinkingTime(options: AskProOptions): "extended" | undefined {
 }
 
 function buildResumeCommand(sessionId: string, options: AskProOptions, cwd: string): string {
+  const flags = [
+    options.extended ? "--extended" : null,
+    options.temporary === true ? "--temporary" : null,
+    options.temporary === false ? "--no-temporary" : null,
+  ];
+  return buildSessionCommand(cwd, [...flags, "--resume", sessionId]);
+}
+
+function buildHarvestCommand(sessionId: string, cwd: string): string {
+  return buildSessionCommand(cwd, ["--harvest", sessionId]);
+}
+
+function buildSessionCommand(cwd: string, args: Array<string | null>): string {
   const launcher = buildLauncherCommand();
   const flags = [
     needsExplicitCwd(launcher) ? "--cwd" : null,
     needsExplicitCwd(launcher) ? quoteCommandArg(cwd) : null,
-    options.extended ? "--extended" : null,
-    options.temporary ? "--temporary" : null,
-    "--resume",
-    sessionId,
+    ...args,
   ].filter(Boolean);
   return `${launcher} ${flags.join(" ")}`;
 }
@@ -267,6 +286,6 @@ function mergeStatusOptions(
   return {
     ...options,
     extended: options.extended === true || status.thinkingTime === "extended",
-    temporary: options.temporary === true || status.temporary === true,
+    temporary: options.temporary !== undefined ? options.temporary : status.temporary === true,
   };
 }

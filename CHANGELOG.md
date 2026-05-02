@@ -19,7 +19,7 @@
 
 - Add the minimal V1 CLI: `ask-pro "<question>"`, `--files`, `--dry-run`,
   `--resume`, `--status`, `--harvest`, `--copy`, `--extended`, `--temporary`,
-  and `--verbose`.
+  `--no-temporary`, and `--verbose`.
 - Add the `$ask-pro` Codex skill and plugin skeleton.
 - Add `pnpm run plugin:refresh` to refresh the local Codex plugin cache from
   the repo source without hand-copying generated cache files.
@@ -51,6 +51,8 @@
   session resume paths.
 - CLI: persist requested `--extended` and `--temporary` modes in session status
   so plain `--resume` preserves dry-run intent.
+- CLI: add `--no-temporary` for retrying a Temporary Chat session in normal
+  ChatGPT.
 - Browser: force an English browser locale for ask-pro runs to reduce selector
   drift from localized ChatGPT UI.
 - Browser: detect the current top-right temporary-chat control shape without
