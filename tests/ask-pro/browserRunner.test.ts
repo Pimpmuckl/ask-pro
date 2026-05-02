@@ -222,6 +222,45 @@ describe("ask-pro browser runner", () => {
     expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
   });
 
+  test("reattach rejects agent profile paths without a stored agent id", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-missing-agent-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review the missing-agent managed browser session.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        profileDir: path.join(
+          os.homedir(),
+          ".agents",
+          "skills",
+          "ask-pro",
+          "agents",
+          "review-t1-6d908a4714",
+          "browser-profile",
+        ),
+        runtime: {
+          chromePort: 9776,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-missing-agent",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      /does not match stored agent id/i,
+    );
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
+  });
+
   test("reattach keeps a safe recorded managed profile authoritative", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-managed-"));
     tempDirs.push(cwd);
@@ -246,7 +285,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "running",
-        agentId: "review-t1-6d908a4714",
+        agentId: "review-t2-91dc99b944",
         profileDir: recordedProfile,
         runtime: {
           chromePort: 9555,
@@ -263,5 +302,45 @@ describe("ask-pro browser runner", () => {
     expect(firstCall?.[1]).toMatchObject({
       manualLoginProfileDir: recordedProfile,
     });
+  });
+
+  test("reattach rejects agent profile paths that do not match the stored agent id", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-mismatch-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review the mismatched managed browser session.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        agentId: "review-t1-6d908a4714",
+        profileDir: path.join(
+          os.homedir(),
+          ".agents",
+          "skills",
+          "ask-pro",
+          "agents",
+          "review-t2-91dc99b944",
+          "browser-profile",
+        ),
+        runtime: {
+          chromePort: 9777,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-mismatch",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      /does not match stored agent id/i,
+    );
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
   });
 });

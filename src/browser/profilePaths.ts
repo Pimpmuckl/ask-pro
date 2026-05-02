@@ -22,16 +22,19 @@ export function isAskProManagedBrowserProfileDir(profileDir: string): boolean {
   const defaultProfile = normalizeProfilePath(askProBrowserProfileDirForAgentId(null));
   if (resolved === defaultProfile) return true;
 
+  return askProAgentIdForManagedBrowserProfileDir(profileDir) !== null;
+}
+
+export function askProAgentIdForManagedBrowserProfileDir(profileDir: string): string | null {
+  const resolved = normalizeProfilePath(profileDir);
   const agentsRoot = normalizeProfilePath(path.join(ASK_PRO_STATE_DIR, "agents"));
   const relative = path.relative(agentsRoot, resolved);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) return false;
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
 
   const parts = relative.split(path.sep);
-  return (
-    parts.length === 2 &&
-    RESOLVED_AGENT_ID_PATTERN.test(parts[0]!) &&
-    parts[1] === "browser-profile"
-  );
+  if (parts.length !== 2 || parts[1] !== "browser-profile") return null;
+  const agentId = parts[0]!;
+  return RESOLVED_AGENT_ID_PATTERN.test(agentId) ? agentId : null;
 }
 
 export function resolveAskProAgentId(env: NodeJS.ProcessEnv = process.env): string | null {

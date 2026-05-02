@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { resolveBrowserConfig } from "../../src/browser/config.js";
 import { CHATGPT_URL } from "../../src/browser/constants.js";
 import {
+  askProAgentIdForManagedBrowserProfileDir,
   askProBrowserProfileDirForAgentId,
   defaultAskProBrowserProfileDir,
   isAskProManagedBrowserProfileDir,
@@ -101,6 +102,8 @@ describe("resolveBrowserConfig", () => {
       false,
     );
     expect(isAskProManagedBrowserProfileDir(path.join(process.cwd(), "profile"))).toBe(false);
+    expect(askProAgentIdForManagedBrowserProfileDir(agentProfile)).toBe("review-t1-59cd6bada6");
+    expect(askProAgentIdForManagedBrowserProfileDir(defaultAskProBrowserProfileDir())).toBeNull();
   });
 
   test("rejects padded explicit agent ids instead of silently aliasing them", () => {

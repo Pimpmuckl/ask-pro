@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { BrowserAutomationError } from "../browser/errors.js";
 import {
+  askProAgentIdForManagedBrowserProfileDir,
   askProBrowserProfileDirForAgentId,
   defaultAskProBrowserProfileDir,
   isAskProManagedBrowserProfileDir,
@@ -238,8 +239,16 @@ async function ensureResponseZipManifest(sessionDir: string): Promise<void> {
 
 function resolveResumeBrowserProfile(metadata: AskProBrowserMetadata): string {
   const agentProfile = resolveStoredAgentProfile(metadata.agentId);
-  if (metadata.profileDir && isAskProManagedBrowserProfileDir(metadata.profileDir)) {
-    return metadata.profileDir;
+  const profileDir = metadata.profileDir;
+  const profileAgentId = profileDir ? askProAgentIdForManagedBrowserProfileDir(profileDir) : null;
+  if (profileAgentId && profileAgentId !== metadata.agentId) {
+    throw new Error("Stored ask-pro agent profile does not match stored agent id.");
+  }
+  if (profileAgentId && agentProfile) {
+    return profileDir!;
+  }
+  if (profileDir && !profileAgentId && isAskProManagedBrowserProfileDir(profileDir)) {
+    return profileDir;
   }
   if (hasLegacyNonManagedProfile(metadata)) return metadata.profileDir!;
 
