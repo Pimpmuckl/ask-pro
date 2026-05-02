@@ -32,6 +32,8 @@ export interface RunAskProBrowserSessionOptions {
   sessionId: string;
   thinkingTime?: ThinkingTimeLevel;
   temporary?: boolean;
+  browserProfileDir?: string;
+  agentId?: string | null;
   verbose?: boolean;
 }
 
@@ -40,12 +42,14 @@ export async function runAskProBrowserSession({
   sessionId,
   thinkingTime,
   temporary,
+  browserProfileDir,
+  agentId: agentIdOverride,
   verbose,
 }: RunAskProBrowserSessionOptions): Promise<BrowserRunResult> {
   const paths = getAskProSessionPaths(cwd, sessionId);
   const prompt = await readAskProPrompt({ cwd, sessionId });
-  const agentId = resolveAskProAgentId();
-  const browserProfile = askProBrowserProfileDirForAgentId(agentId);
+  const agentId = agentIdOverride !== undefined ? agentIdOverride : resolveAskProAgentId();
+  const browserProfile = browserProfileDir ?? askProBrowserProfileDirForAgentId(agentId);
   const metadata = await readBrowserMetadata(paths.browser).catch(() => null);
   const requestedThinkingTime = thinkingTime ?? metadata?.thinkingTime ?? "standard";
   const chatgptUrl = temporary ? ASK_PRO_TEMPORARY_CHATGPT_URL : ASK_PRO_CHATGPT_URL;
@@ -195,6 +199,8 @@ export async function resumeAskProBrowserSession({
       sessionId,
       thinkingTime: thinkingTime ?? metadata.thinkingTime,
       temporary: isTemporaryAskProUrl(chatgptUrl),
+      browserProfileDir: fallbackProfile,
+      agentId: metadata.agentId ?? null,
       verbose,
     });
     return;

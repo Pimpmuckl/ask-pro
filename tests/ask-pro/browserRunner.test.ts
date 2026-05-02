@@ -246,10 +246,65 @@ describe("ask-pro browser runner", () => {
     const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
     expect(firstCall?.[0]).toMatchObject({
       config: {
+        manualLoginProfileDir: path.join(
+          os.homedir(),
+          ".agents",
+          "skills",
+          "ask-pro",
+          "browser-profile",
+        ),
         thinkingTime: "extended",
         url: "https://chatgpt.com/",
       },
     });
+  });
+
+  test("reattach without runtime metadata reuses the stored agent profile", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-no-runtime-agent-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Resume after agent login without a saved runtime.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    const storedProfile = path.join(
+      os.homedir(),
+      ".agents",
+      "skills",
+      "ask-pro",
+      "agents",
+      "review-t1-59cd6bada6",
+      "browser-profile",
+    );
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "needs_user_auth",
+        agentId: "review-t1-59cd6bada6",
+        profileDir: storedProfile,
+        url: "https://chatgpt.com/",
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "NEEDS_USER_AUTH" });
+
+    vi.stubEnv("ASK_PRO_AGENT_ID", "other-agent");
+    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
+
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
+    const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({
+      config: {
+        manualLoginProfileDir: storedProfile,
+      },
+    });
+    const metadata = JSON.parse(
+      await fs.readFile(path.join(session.dir, "browser.json"), "utf8"),
+    ) as { agentId?: string | null; profileDir?: string };
+    expect(metadata.agentId).toBe("review-t1-59cd6bada6");
+    expect(metadata.profileDir).toBe(storedProfile);
   });
 
   test("reattach fallback uses recorded agent id instead of ambient env", async () => {

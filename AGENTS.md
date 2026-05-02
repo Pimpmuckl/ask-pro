@@ -13,9 +13,9 @@ ask_pro-specific notes:
   button. Treat it as a placeholder and wait for the real assistant response.
 - Current ChatGPT UI note: the model selector can be the composer pill; Pro
   effort may live under Configure / `Pro thinking effort`; temporary chat can be
-  a top-right checkbox/toggle. Temporary Chat is opt-in with `--temporary`, but
-  Pro runs stay guarded until live picker verification because Temporary Chat is
-  less recoverable after browser/tab loss and can hide Pro in some account UIs.
+  a top-right checkbox/toggle. Temporary Chat is opt-in with `--temporary`
+  because it is less recoverable after browser/tab loss and can hide Pro in some
+  account UIs.
 - Project sessions live under `.ask-pro/sessions/<id>/`.
 - The default persistent browser profile lives under
   `~/.agents/skills/ask-pro/browser-profile`. Set `ASK_PRO_AGENT_ID` to give an

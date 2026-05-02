@@ -2,7 +2,7 @@ import { CHATGPT_URL, DEFAULT_MODEL_STRATEGY, DEFAULT_MODEL_TARGET } from "./con
 import { normalizeBrowserModelStrategy } from "./modelStrategy.js";
 import { defaultAskProBrowserProfileDir } from "./profilePaths.js";
 import type { BrowserAutomationConfig, ResolvedBrowserConfig } from "./types.js";
-import { isTemporaryChatUrl, normalizeChatgptUrl } from "./utils.js";
+import { normalizeChatgptUrl } from "./utils.js";
 
 export const DEFAULT_BROWSER_CONFIG: ResolvedBrowserConfig = {
   chromeProfile: null,
@@ -60,11 +60,6 @@ export function resolveBrowserConfig(
   );
   const desiredModel =
     config?.desiredModel ?? DEFAULT_BROWSER_CONFIG.desiredModel ?? DEFAULT_MODEL_TARGET;
-  if (isTemporaryChatUrl(normalizedUrl) && /\bpro\b/i.test(desiredModel)) {
-    throw new Error(
-      "Temporary Chat with an explicit Pro model is not supported yet because some ChatGPT accounts hide Pro models there. Use normal ask-pro for Pro runs until the Temporary Chat picker path is verified.",
-    );
-  }
   const modelStrategy =
     normalizeBrowserModelStrategy(config?.modelStrategy) ??
     DEFAULT_BROWSER_CONFIG.modelStrategy ??

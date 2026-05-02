@@ -131,7 +131,8 @@ async function submitOrResumeBrowserSession(
   if (
     status.status === "SUBMITTED" ||
     status.status === "WAITING" ||
-    status.status === "WAIT_TIMED_OUT"
+    status.status === "WAIT_TIMED_OUT" ||
+    status.status === "NEEDS_USER_AUTH"
   ) {
     console.log(`Reattaching to submitted ask-pro session: ${sessionId}`);
     await resumeAskProBrowserSession({

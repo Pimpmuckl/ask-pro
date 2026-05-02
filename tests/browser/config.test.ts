@@ -125,22 +125,13 @@ describe("resolveBrowserConfig", () => {
     );
   });
 
-  test("rejects temporary chat URLs when desiredModel is Pro", () => {
-    expect(() =>
-      resolveBrowserConfig({
-        url: "https://chatgpt.com/?temporary-chat=true",
-        desiredModel: "GPT-5.2 Pro",
-      }),
-    ).toThrow(/temporary chat.*pro/i);
-  });
-
-  test("allows temporary chat URLs without an explicit Pro model", () => {
+  test("allows temporary chat URLs when desiredModel is Pro", () => {
     const resolved = resolveBrowserConfig({
       url: "https://chatgpt.com/?temporary-chat=true",
-      desiredModel: "GPT-5.2 Thinking",
+      desiredModel: "GPT-5.2 Pro",
     });
 
     expect(resolved.url).toBe("https://chatgpt.com/?temporary-chat=true");
-    expect(resolved.desiredModel).toBe("GPT-5.2 Thinking");
+    expect(resolved.desiredModel).toBe("GPT-5.2 Pro");
   });
 });
