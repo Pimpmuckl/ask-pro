@@ -67,8 +67,9 @@ ask-pro --files "src/**" --files "prisma/**" "<question>"
 Do not expose broad model/preset complexity in the normal path. `--extended` is
 the single explicit long-thinking opt-in for hard architecture, production-risk,
 and implementation-plan package questions where a multi-hour wait is acceptable.
-`--temporary` is the explicit Temporary Chat opt-in; use it when ephemeral
-ChatGPT history matters and the caller accepts weaker recovery if the
+`--temporary` is the explicit Temporary Chat opt-in. Keep Pro runs guarded until
+the live Temporary Chat + Pro picker path is verified; use it only when
+ephemeral ChatGPT history matters and the caller accepts weaker recovery if the
 browser/tab is closed before harvest.
 
 ## Default behavior

@@ -10,6 +10,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const cliEntry = path.join(here, "../bin/ask-pro-cli.js");
 
 const child = spawn(process.execPath, ["--", cliEntry, ...args], {
+  env: {
+    ...process.env,
+    ASK_PRO_SOURCE_CHECKOUT_LAUNCHER: "npm exec --yes pnpm@10.33.2 -- start --",
+  },
   stdio: "inherit",
 });
 child.on("exit", (code) => {

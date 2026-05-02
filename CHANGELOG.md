@@ -45,6 +45,10 @@
   than closed-tab recovery.
 - Browser: persist the configured ChatGPT URL in browser metadata for relaunch
   resume paths.
+- Browser: guard Temporary Chat + explicit Pro model runs until the live picker
+  path is verified.
+- Browser: make auth resume reopen the managed submission when login happened
+  before runtime metadata was saved.
 - Browser: preserve requested Extended Pro thinking across auth and submitted
   session resume paths.
 - Browser: force an English browser locale for ask-pro runs to reduce selector
@@ -62,6 +66,8 @@
   frontmatter, and tighten the skill text into a concise agent runbook.
 - Plugin: make `pnpm run plugin:refresh` use a Node entrypoint so the package
   script is not Windows-shell-specific.
+- CLI: preserve the source-checkout `pnpm start` launcher in generated resume
+  commands.
 
 ### Docs
 

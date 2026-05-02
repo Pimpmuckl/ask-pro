@@ -180,14 +180,16 @@ ask-pro --extended "Review this architecture decision."
 Use `--extended` for difficult architecture questions, production-risk reviews,
 and implementation-plan packages where a multi-hour wait is acceptable.
 
-Temporary Chat is available as an explicit opt-in:
+Temporary Chat has an explicit flag, but Pro runs are currently guarded until
+the Temporary Chat + Pro picker path is live-verified:
 
 ```bash
 ask-pro --temporary "Review this sensitive migration plan."
 ```
 
-Use `--temporary` only when ephemeral ChatGPT history matters. Temporary Chat
-sessions are less recoverable if the browser or tab is closed before harvest.
+Use `--temporary` only after verifying the current ChatGPT account exposes Pro
+inside Temporary Chat. Temporary Chat sessions are less recoverable if the
+browser or tab is closed before harvest.
 
 ## Commands
 
@@ -206,7 +208,7 @@ Useful options:
 | `--harvest [session-id]` | Print harvested `ANSWER.md`.                                            |
 | `--copy [session-id]`    | Print the session prompt/copy target for manual fallback.               |
 | `--extended`             | Request Extended Pro thinking for deep, multi-hour escalations.         |
-| `--temporary`            | Start in ChatGPT Temporary Chat; less recoverable after tab loss.       |
+| `--temporary`            | Request Temporary Chat; guarded for Pro until live picker verification. |
 | `--verbose`              | Print browser automation diagnostics.                                   |
 
 Examples:

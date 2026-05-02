@@ -37,7 +37,8 @@ Risk: Temporary Chat may not expose desired Pro model picker.
 
 Mitigation:
 
-- launch with `https://chatgpt.com/?temporary-chat=true` for clean new runs
+- keep Temporary Chat behind explicit `--temporary`
+- guard Temporary Chat + Pro runs until the live picker path is verified
 - keep model-picker failure messages actionable if ChatGPT changes availability
 - keep session metadata
 

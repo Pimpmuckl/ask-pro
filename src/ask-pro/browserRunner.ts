@@ -185,7 +185,19 @@ export async function resumeAskProBrowserSession({
   const fallbackProfile = resolveResumeBrowserProfile(metadata);
   const attachRunning = !metadata.agentId;
   if (!metadata.runtime) {
-    throw new Error(`session ${sessionId} has no saved browser runtime metadata`);
+    await appendAskProLog(
+      cwd,
+      sessionId,
+      "No saved browser runtime metadata; reopening managed browser submission.",
+    );
+    await runAskProBrowserSession({
+      cwd,
+      sessionId,
+      thinkingTime: thinkingTime ?? metadata.thinkingTime,
+      temporary: isTemporaryAskProUrl(chatgptUrl),
+      verbose,
+    });
+    return;
   }
 
   await updateAskProStatus({ cwd, sessionId, status: "WAITING" });
@@ -240,6 +252,16 @@ export async function resumeAskProBrowserSession({
       reason: error instanceof Error ? error.message : String(error),
     });
     throw error;
+  }
+}
+
+function isTemporaryAskProUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const value = (parsed.searchParams.get("temporary-chat") ?? "").trim().toLowerCase();
+    return value === "true" || value === "1" || value === "yes";
+  } catch {
+    return false;
   }
 }
 

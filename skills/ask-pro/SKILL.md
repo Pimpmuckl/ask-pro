@@ -41,8 +41,10 @@ By default, `ask-pro` uses normal Pro thinking effort. Add `--extended` only for
 mega-hard architecture questions, production-risk reviews, or implementation
 plan packages where a multi-hour wait is acceptable.
 
-Temporary Chat is opt-in. Add `--temporary` only when ephemeral ChatGPT history
-matters and weaker recovery after browser/tab loss is acceptable.
+Temporary Chat is opt-in but currently guarded for Pro runs until the live
+Temporary Chat + Pro picker path is verified. Add `--temporary` only when
+ephemeral ChatGPT history matters and weaker recovery after browser/tab loss is
+acceptable.
 
 Do not set `ASK_PRO_AGENT_ID` for ordinary single-agent use; the shared
 `ask-pro` browser profile is already persistent. Set `ASK_PRO_AGENT_ID` only

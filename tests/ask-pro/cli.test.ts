@@ -80,4 +80,36 @@ describe("ask-pro cli", () => {
       resumeCommand: expect.stringContaining("--extended --temporary --resume"),
     });
   }, 30000);
+
+  test("uses source-checkout launcher in resume command when invoked through pnpm start", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-source-resume-"));
+    tempDirs.push(cwd);
+
+    const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
+    const tsxLoader = pathToFileURL(
+      path.join(process.cwd(), "node_modules", "tsx", "dist", "esm", "index.mjs"),
+    ).href;
+    await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--dry-run", "--extended", "Review this."],
+      {
+        cwd,
+        env: {
+          ...process.env,
+          ASK_PRO_SOURCE_CHECKOUT_LAUNCHER: "npm exec --yes pnpm@10.33.2 -- start --",
+        },
+      },
+    );
+
+    const sessions = await fs.readdir(path.join(cwd, ".ask-pro", "sessions"));
+    const statusRaw = await fs.readFile(
+      path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "status.json"),
+      "utf8",
+    );
+    expect(JSON.parse(statusRaw)).toMatchObject({
+      resumeCommand: expect.stringMatching(
+        /^npm exec --yes pnpm@10\.33\.2 -- start -- --extended --resume /,
+      ),
+    });
+  }, 30000);
 });

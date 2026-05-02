@@ -217,6 +217,41 @@ describe("ask-pro browser runner", () => {
     expect(metadata.thinkingTime).toBe("extended");
   });
 
+  test("reattach without runtime metadata reopens the managed browser submission", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-no-runtime-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Resume after login without a saved runtime.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "needs_user_auth",
+        thinkingTime: "extended",
+        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        url: "https://chatgpt.com/",
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAITING" });
+
+    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
+
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
+    expect(runBrowserModeMock).toHaveBeenCalledTimes(1);
+    const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({
+      config: {
+        thinkingTime: "extended",
+        url: "https://chatgpt.com/",
+      },
+    });
+  });
+
   test("reattach fallback uses recorded agent id instead of ambient env", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-agent-"));
     tempDirs.push(cwd);

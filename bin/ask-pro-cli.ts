@@ -185,11 +185,23 @@ function requestedThinkingTime(options: AskProOptions): "extended" | undefined {
 }
 
 function buildResumeCommand(sessionId: string, options: AskProOptions): string {
+  const launcher = buildLauncherCommand();
   const flags = [
     options.extended ? "--extended" : null,
     options.temporary ? "--temporary" : null,
     "--resume",
     sessionId,
   ].filter(Boolean);
-  return `ask-pro ${flags.join(" ")}`;
+  return `${launcher} ${flags.join(" ")}`;
+}
+
+function buildLauncherCommand(): string {
+  const sourceLauncher = process.env.ASK_PRO_SOURCE_CHECKOUT_LAUNCHER?.trim();
+  if (sourceLauncher) {
+    return sourceLauncher;
+  }
+  if (process.env.npm_lifecycle_event === "start") {
+    return "npm exec --yes pnpm@10.33.2 -- start --";
+  }
+  return "ask-pro";
 }
