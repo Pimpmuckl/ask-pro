@@ -18,9 +18,16 @@
 ### Added
 
 - Add the minimal V1 CLI: `ask-pro "<question>"`, `--files`, `--dry-run`,
-  `--resume`, `--status`, `--harvest`, `--copy`, and `--verbose`.
+  `--resume`, `--status`, `--harvest`, `--copy`, `--extended`, `--temporary`,
+  `--no-temporary`, and `--verbose`.
 - Add the `$ask-pro` Codex skill and plugin skeleton.
+- Add `pnpm run plugin:refresh` to refresh the local Codex plugin cache from
+  the repo source without hand-copying generated cache files.
+- Document the source-checkout CLI fallback for agents when `ask-pro` is not on
+  `PATH`.
 - Add `ASK_PRO_AGENT_ID` support for per-agent persistent browser profiles.
+- Clarify that `ASK_PRO_AGENT_ID` should be unset for ordinary single-agent
+  use and stable/reusable for isolated agent profiles.
 - Add generated response zip discovery, download, validation, extraction, and
   `PRO_OUTPUT_MANIFEST.json` metadata.
 - Add a non-resubmitting `--resume` harvest path for submitted, waiting, and
@@ -31,6 +38,21 @@
 - Browser: recognize ChatGPT's composer-pill model picker and Configure /
   `Pro thinking effort` dialog.
 - Browser: request Extended Pro thinking when available.
+- Browser: default ask-pro runs to normal Pro thinking effort; use `--extended`
+  to request Extended Pro thinking for deep, multi-hour escalations.
+- Browser: add `--temporary` to launch ask-pro runs with ChatGPT's
+  `?temporary-chat=true` URL when ephemeral ChatGPT history is more important
+  than closed-tab recovery.
+- Browser: persist the configured ChatGPT URL in browser metadata for relaunch
+  resume paths.
+- Browser: make auth resume reopen the managed submission when login happened
+  before runtime metadata was saved.
+- Browser: preserve requested Extended Pro thinking across auth and submitted
+  session resume paths.
+- CLI: persist requested `--extended` and `--temporary` modes in session status
+  so plain `--resume` preserves dry-run intent.
+- CLI: add `--no-temporary` for retrying a Temporary Chat session in normal
+  ChatGPT.
 - Browser: force an English browser locale for ask-pro runs to reduce selector
   drift from localized ChatGPT UI.
 - Browser: detect the current top-right temporary-chat control shape without
@@ -44,6 +66,10 @@
   incomplete/reattachable runs available.
 - Plugin: normalize the Codex plugin identity to `ask-pro`, add required YAML
   frontmatter, and tighten the skill text into a concise agent runbook.
+- Plugin: make `pnpm run plugin:refresh` use a Node entrypoint so the package
+  script is not Windows-shell-specific.
+- CLI: preserve the source-checkout `pnpm start` launcher in generated resume
+  commands.
 
 ### Docs
 

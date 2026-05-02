@@ -31,13 +31,29 @@ When invoked:
 3. Choose a small, high-signal file bundle with `--files`.
 4. Write the prompt yourself; include constraints, what you inspected, the files attached, options considered, and the output you need.
 5. Run the smallest useful command, usually `ask-pro --files "<glob>" "<prompt>"`.
+   If `ask-pro` is not on `PATH`, run it from the source checkout instead:
+   `npm exec --yes pnpm@10.33.2 -- --dir C:/Code/ask-pro start -- --files "<glob>" "<prompt>"`.
 6. If auth is required, stop and ask the human to log in in the opened browser.
 7. Resume or harvest as instructed by the CLI.
 8. Treat the answer as advisory; turn it into your own plan before editing code.
 
-For parallel or role-specific agents, set a stable lowercase `ASK_PRO_AGENT_ID`
-before running the CLI. Example: `ASK_PRO_AGENT_ID=review-t1 ask-pro ...`. Each
-agent id gets an isolated persistent browser profile.
+By default, `ask-pro` uses normal Pro thinking effort. Add `--extended` only for
+mega-hard architecture questions, production-risk reviews, or implementation
+plan packages where a multi-hour wait is acceptable.
+
+Temporary Chat is opt-in. Add `--temporary` only when ephemeral ChatGPT history
+matters and weaker recovery after browser/tab loss is acceptable. If Pro is
+hidden in Temporary Chat for the current account, the model-picker error should
+say so and the agent should retry the same session with
+`--no-temporary --resume <session-id>`.
+
+Do not set `ASK_PRO_AGENT_ID` for ordinary single-agent use; the shared
+`ask-pro` browser profile is already persistent. Set `ASK_PRO_AGENT_ID` only
+when separate agents truly need isolated browser profiles, such as concurrent
+review lanes. Use a stable reusable lowercase id like `review-t1`, not a
+one-off task slug, because each new id creates a new Chrome profile and may
+require the human to log in again. Example:
+`ASK_PRO_AGENT_ID=review-t1 ask-pro ...`.
 
 ## Prompt Shape
 
@@ -55,11 +71,20 @@ If useful, ask Pro to create `ask-pro-response.zip` with those files. Always sup
 
 ```bash
 ask-pro "Review the async billing webhook migration plan and return an implementation plan."
+ask-pro --extended "Produce a deep implementation plan for this risky migration."
+ask-pro --temporary "Review this sensitive migration plan."
 ask-pro --files "src/api/stripe/**" --files "prisma/**" --files "src/lib/billing/**" \
   "Review whether this Stripe webhook flow should use a queue or transactional outbox."
 ask-pro --dry-run "Prepare the Pro handoff but do not open the browser."
 ask-pro --resume <session-id>
 ask-pro --harvest <session-id>
+```
+
+If the binary is not on `PATH`, use the source checkout fallback:
+
+```bash
+cd C:/Code/ask-pro
+npm exec --yes pnpm@10.33.2 -- start -- "Review the async billing webhook migration plan."
 ```
 
 ## Safety

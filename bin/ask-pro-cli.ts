@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 import "dotenv/config";
 import path from "node:path";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import {
   createAskProSession,
   readAskProAnswer,
   readAskProStatus,
+  updateAskProResumeCommand,
   updateAskProStatus,
 } from "../src/ask-pro/session.js";
 import {
@@ -22,6 +23,9 @@ interface AskProOptions {
   status?: string | boolean;
   harvest?: string | boolean;
   copy?: string | boolean;
+  extended?: boolean;
+  temporary?: boolean;
+  cwd?: string;
   verbose?: boolean;
 }
 
@@ -38,6 +42,13 @@ program
   .option("--status [session-id]", "show ask-pro session status")
   .option("--harvest [session-id]", "print harvested ANSWER.md for a session")
   .option("--copy [session-id]", "print the copy target for a session")
+  .option(
+    "--extended",
+    "request Extended Pro thinking; use only when a multi-hour wait is acceptable",
+  )
+  .option("--temporary", "start the run in ChatGPT Temporary Chat")
+  .option("--no-temporary", "retry a session outside ChatGPT Temporary Chat")
+  .addOption(new Option("--cwd <path>", "project working directory").hideHelp())
   .option("--verbose", "print browser automation diagnostics")
   .action(async (questionParts: string[], options: AskProOptions) => {
     try {
@@ -52,7 +63,7 @@ program
 await program.parseAsync(process.argv);
 
 async function runAskPro(question: string, options: AskProOptions): Promise<void> {
-  const cwd = process.cwd();
+  const cwd = resolveProjectCwd(options);
   if (options.status !== undefined) {
     const { status } = await readAskProStatus({ cwd, sessionId: optionSessionId(options.status) });
     console.log(JSON.stringify(status, null, 2));
@@ -77,7 +88,20 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
   }
   if (options.resume !== undefined) {
     const { status } = await readAskProStatus({ cwd, sessionId: optionSessionId(options.resume) });
-    await submitOrResumeBrowserSession(cwd, status.sessionId, options);
+    const effectiveOptions = mergeStatusOptions(options, status);
+    const resumeCommand = buildResumeCommand(status.sessionId, effectiveOptions, cwd);
+    const harvestCommand = buildHarvestCommand(status.sessionId, cwd);
+    if (resumeCommand !== status.resumeCommand || harvestCommand !== status.harvestCommand) {
+      await updateAskProResumeCommand({
+        cwd,
+        sessionId: status.sessionId,
+        resumeCommand,
+        harvestCommand,
+        thinkingTime: effectiveOptions.extended ? "extended" : undefined,
+        temporary: effectiveOptions.temporary,
+      });
+    }
+    await submitOrResumeBrowserSession(cwd, status.sessionId, effectiveOptions);
     return;
   }
 
@@ -88,6 +112,23 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
     filePatterns: options.files ?? [],
     dryRun,
   });
+  const resumeCommand = buildResumeCommand(session.id, options, cwd);
+  const harvestCommand = buildHarvestCommand(session.id, cwd);
+  if (
+    resumeCommand !== session.status.resumeCommand ||
+    harvestCommand !== session.status.harvestCommand
+  ) {
+    await updateAskProResumeCommand({
+      cwd,
+      sessionId: session.id,
+      resumeCommand,
+      harvestCommand,
+      thinkingTime: options.extended ? "extended" : undefined,
+      temporary: options.temporary,
+    });
+    session.status.resumeCommand = resumeCommand;
+    session.status.harvestCommand = harvestCommand;
+  }
   console.log(`ask-pro session created: .ask-pro/sessions/${session.id}`);
   console.log(`Status: ${session.status.status}`);
   console.log(`Context files: ${session.manifest.includedFiles.length}`);
@@ -118,38 +159,137 @@ async function submitOrResumeBrowserSession(
   if (
     status.status === "SUBMITTED" ||
     status.status === "WAITING" ||
-    status.status === "WAIT_TIMED_OUT"
+    status.status === "WAIT_TIMED_OUT" ||
+    status.status === "NEEDS_USER_AUTH"
   ) {
     console.log(`Reattaching to submitted ask-pro session: ${sessionId}`);
-    await resumeAskProBrowserSession({ cwd, sessionId, verbose: options.verbose });
+    try {
+      await resumeAskProBrowserSession({
+        cwd,
+        sessionId,
+        thinkingTime: requestedThinkingTime(options),
+        temporary: options.temporary,
+        verbose: options.verbose,
+      });
+    } catch (error) {
+      if (error instanceof AskProNeedsAuthError) {
+        printAuthInstructions(sessionId, options, cwd, error);
+        return;
+      }
+      throw error;
+    }
     console.log(`Pro response harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
     return;
   }
   try {
     console.log("Opening ChatGPT Pro. Waiting with 180m budget after submission.");
-    await runAskProBrowserSession({ cwd, sessionId, verbose: options.verbose });
+    await runAskProBrowserSession({
+      cwd,
+      sessionId,
+      thinkingTime: requestedThinkingTime(options),
+      temporary: options.temporary,
+      verbose: options.verbose,
+    });
     console.log(`Pro response harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
   } catch (error) {
     if (error instanceof AskProNeedsAuthError) {
-      console.log("ChatGPT authentication is required.");
-      console.log("I opened a browser window. Please log into ChatGPT there.");
-      console.log("Do not paste credentials into this terminal or agent chat.");
-      console.log(`When the message composer is visible, run: ask-pro --resume ${sessionId}`);
-      console.log(
-        JSON.stringify(
-          {
-            status: "NEEDS_USER_AUTH",
-            sessionId,
-            reason: error.reason,
-            resumeCommand: `ask-pro --resume ${sessionId}`,
-            browserProfile: error.browserProfile,
-          },
-          null,
-          2,
-        ),
-      );
+      printAuthInstructions(sessionId, options, cwd, error);
       return;
     }
     throw error;
   }
+}
+
+function requestedThinkingTime(options: AskProOptions): "extended" | undefined {
+  return options.extended ? "extended" : undefined;
+}
+
+function buildResumeCommand(sessionId: string, options: AskProOptions, cwd: string): string {
+  const flags = [
+    options.extended ? "--extended" : null,
+    options.temporary === true ? "--temporary" : null,
+    options.temporary === false ? "--no-temporary" : null,
+  ];
+  return buildSessionCommand(cwd, [...flags, "--resume", sessionId]);
+}
+
+function buildHarvestCommand(sessionId: string, cwd: string): string {
+  return buildSessionCommand(cwd, ["--harvest", sessionId]);
+}
+
+function buildSessionCommand(cwd: string, args: Array<string | null>): string {
+  const launcher = buildLauncherCommand();
+  const flags = [
+    needsExplicitCwd(launcher) ? "--cwd" : null,
+    needsExplicitCwd(launcher) ? quoteCommandArg(cwd) : null,
+    ...args,
+  ].filter(Boolean);
+  return `${launcher} ${flags.join(" ")}`;
+}
+
+function buildLauncherCommand(): string {
+  const sourceLauncher = process.env.ASK_PRO_SOURCE_CHECKOUT_LAUNCHER?.trim();
+  if (sourceLauncher) {
+    return sourceLauncher;
+  }
+  return "ask-pro";
+}
+
+function needsExplicitCwd(launcher: string): boolean {
+  return launcher !== "ask-pro";
+}
+
+function resolveProjectCwd(options: AskProOptions): string {
+  if (options.cwd) {
+    return path.resolve(options.cwd);
+  }
+  if (process.env.ASK_PRO_SOURCE_CHECKOUT_LAUNCHER && process.env.INIT_CWD) {
+    return path.resolve(process.env.INIT_CWD);
+  }
+  return process.cwd();
+}
+
+function printAuthInstructions(
+  sessionId: string,
+  options: AskProOptions,
+  cwd: string,
+  error: AskProNeedsAuthError,
+): void {
+  console.log("ChatGPT authentication is required.");
+  console.log("I opened a browser window. Please log into ChatGPT there.");
+  console.log("Do not paste credentials into this terminal or agent chat.");
+  const resumeCommand = buildResumeCommand(sessionId, options, cwd);
+  console.log(`When the message composer is visible, run: ${resumeCommand}`);
+  console.log(
+    JSON.stringify(
+      {
+        status: "NEEDS_USER_AUTH",
+        sessionId,
+        reason: error.reason,
+        resumeCommand,
+        browserProfile: error.browserProfile,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+function quoteCommandArg(value: string): string {
+  if (process.platform !== "win32") {
+    return `'${value.replace(/'/g, "'\\''")}'`;
+  }
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function mergeStatusOptions(
+  options: AskProOptions,
+  status: { thinkingTime?: "extended"; temporary?: boolean },
+): AskProOptions {
+  const temporary = options.temporary !== undefined ? options.temporary : status.temporary;
+  return {
+    ...options,
+    extended: options.extended === true || status.thinkingTime === "extended",
+    temporary,
+  };
 }

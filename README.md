@@ -41,6 +41,12 @@ ask-pro "Review the staged implementation plan."
 
 Requires Node 24+.
 
+If `ask-pro` is not on `PATH`, agents can still use the source checkout:
+
+```powershell
+npm exec --yes pnpm@10.33.2 -- --dir C:\Code\ask-pro start -- "Review the staged implementation plan."
+```
+
 ### Codex Plugin
 
 The CLI and Codex plugin are separate installs. The plugin is what makes
@@ -107,6 +113,19 @@ name.
 After restarting Codex, the skill list should include both `$ask-pro` and the
 plugin-qualified `$ask-pro:ask-pro`.
 
+When you change plugin-facing files such as `README.md`,
+`.codex-plugin/plugin.json`, or `skills/ask-pro/SKILL.md`, refresh the local
+Codex plugin cache from the repo source:
+
+```powershell
+pnpm run plugin:refresh
+```
+
+The cache under `~/.codex/plugins/cache/...` is generated install state. Do not
+edit or hand-copy files there; refresh the plugin and restart or reload Codex.
+The plugin cache intentionally contains docs and skills only; run the CLI from
+the source checkout or a linked `ask-pro` binary.
+
 An eventual `npm install -g ask_pro` will install the `ask-pro` CLI only. It
 will not automatically register the Codex plugin unless Codex adds an npm-based
 plugin installer or marketplace source.
@@ -119,9 +138,12 @@ plugin installer or marketplace source.
 ~/.agents/skills/ask-pro/browser-profile
 ```
 
-For independent agents, set `ASK_PRO_AGENT_ID` before running `ask-pro`. Use a
-lowercase id containing only letters, numbers, `.`, `_`, or `-`. Each agent id
-gets its own persistent profile and profile lock:
+For ordinary single-agent use, leave `ASK_PRO_AGENT_ID` unset so runs reuse the
+shared persistent profile. For truly independent or concurrent agents, set a
+stable reusable `ASK_PRO_AGENT_ID` before running `ask-pro`. Use a lowercase id
+containing only letters, numbers, `.`, `_`, or `-`. Each new agent id gets its
+own persistent profile and profile lock, so throwaway ids may require another
+human login:
 
 ```powershell
 $env:ASK_PRO_AGENT_ID = "review-t1"
@@ -147,8 +169,26 @@ in in the opened browser, then resume:
 ask-pro --resume <session-id>
 ```
 
-Browser runs can take a long time. Pro thinking is allowed a 3 hour automation
-budget by default.
+Browser runs can take a long time. `ask-pro` uses normal Pro thinking effort by
+default. For a deliberate long-haul escalation, pass `--extended`:
+
+```bash
+ask-pro --extended "Review this architecture decision."
+```
+
+Use `--extended` for difficult architecture questions, production-risk reviews,
+and implementation-plan packages where a multi-hour wait is acceptable.
+
+Temporary Chat is available as an explicit opt-in:
+
+```bash
+ask-pro --temporary "Review this sensitive migration plan."
+```
+
+Use `--temporary` only when ephemeral ChatGPT history matters. Temporary Chat
+sessions are less recoverable if the browser or tab is closed before harvest,
+and some ChatGPT accounts may hide Pro models there. If that happens, retry the
+same session with `--no-temporary --resume <session-id>`.
 
 ## Commands
 
@@ -166,6 +206,9 @@ Useful options:
 | `--status [session-id]`  | Show the latest or selected session status.                             |
 | `--harvest [session-id]` | Print harvested `ANSWER.md`.                                            |
 | `--copy [session-id]`    | Print the session prompt/copy target for manual fallback.               |
+| `--extended`             | Request Extended Pro thinking for deep, multi-hour escalations.         |
+| `--temporary`            | Start in ChatGPT Temporary Chat; less recoverable after tab loss.       |
+| `--no-temporary`         | Resume a session outside Temporary Chat.                                |
 | `--verbose`              | Print browser automation diagnostics.                                   |
 
 Examples:

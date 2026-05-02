@@ -11,7 +11,7 @@ import {
 } from "../browser/profilePaths.js";
 import { runBrowserMode, type BrowserRunResult } from "../browserMode.js";
 import { resumeBrowserSession } from "../browser/reattach.js";
-import type { BrowserLogger } from "../browser/types.js";
+import type { BrowserLogger, ThinkingTimeLevel } from "../browser/types.js";
 import {
   appendAskProLog,
   getAskProSessionPaths,
@@ -24,22 +24,43 @@ import { harvestLatestAssistantZip, writeResponseZipManifest } from "./responseZ
 
 const DEFAULT_TIMEOUT_MS = 180 * 60 * 1000;
 const MANUAL_LOGIN_WAIT_MS = 10 * 60 * 1000;
+const ASK_PRO_CHATGPT_URL = "https://chatgpt.com/";
+const ASK_PRO_TEMPORARY_CHATGPT_URL = "https://chatgpt.com/?temporary-chat=true";
 
 export interface RunAskProBrowserSessionOptions {
   cwd: string;
   sessionId: string;
+  thinkingTime?: ThinkingTimeLevel;
+  temporary?: boolean;
+  chatgptUrl?: string;
+  browserProfileDir?: string;
+  agentId?: string | null;
   verbose?: boolean;
 }
 
 export async function runAskProBrowserSession({
   cwd,
   sessionId,
+  thinkingTime,
+  temporary,
+  chatgptUrl: chatgptUrlOverride,
+  browserProfileDir,
+  agentId: agentIdOverride,
   verbose,
 }: RunAskProBrowserSessionOptions): Promise<BrowserRunResult> {
   const paths = getAskProSessionPaths(cwd, sessionId);
   const prompt = await readAskProPrompt({ cwd, sessionId });
-  const agentId = resolveAskProAgentId();
-  const browserProfile = askProBrowserProfileDirForAgentId(agentId);
+  const agentId = agentIdOverride !== undefined ? agentIdOverride : resolveAskProAgentId();
+  const browserProfile = browserProfileDir ?? askProBrowserProfileDirForAgentId(agentId);
+  const metadata = await readBrowserMetadata(paths.browser).catch(() => null);
+  const requestedThinkingTime = thinkingTime ?? metadata?.thinkingTime ?? "standard";
+  const chatgptUrl =
+    chatgptUrlOverride ??
+    (temporary === true
+      ? ASK_PRO_TEMPORARY_CHATGPT_URL
+      : temporary === false
+        ? ASK_PRO_CHATGPT_URL
+        : (metadata?.url ?? ASK_PRO_CHATGPT_URL));
   await fs.mkdir(browserProfile, { recursive: true });
   await updateAskProStatus({ cwd, sessionId, status: "BROWSER_STARTING" });
 
@@ -55,6 +76,7 @@ export async function runAskProBrowserSession({
         },
       ],
       config: {
+        url: chatgptUrl,
         manualLogin: true,
         attachRunning: false,
         manualLoginProfileDir: browserProfile,
@@ -65,7 +87,7 @@ export async function runAskProBrowserSession({
         assistantRecheckTimeoutMs: 180_000,
         desiredModel: "GPT-5.5 Pro",
         modelStrategy: "select",
-        thinkingTime: "extended",
+        thinkingTime: requestedThinkingTime,
         acceptLanguage: "en-US,en",
         keepBrowser: true,
         allowCookieErrors: true,
@@ -82,6 +104,8 @@ export async function runAskProBrowserSession({
             status: "running",
             agentId,
             profileDir: browserProfile,
+            thinkingTime: requestedThinkingTime,
+            url: chatgptUrl,
             runtime,
           },
         });
@@ -106,6 +130,8 @@ export async function runAskProBrowserSession({
         status: "completed",
         agentId,
         profileDir: browserProfile,
+        thinkingTime: requestedThinkingTime,
+        url: chatgptUrl,
         runtime: browserResultToRuntime(result),
       },
     });
@@ -122,6 +148,8 @@ export async function runAskProBrowserSession({
           status: "needs_user_auth",
           agentId,
           profileDir: browserProfile,
+          thinkingTime: requestedThinkingTime,
+          url: chatgptUrl,
           reason: classifyBrowserError(error),
         },
       });
@@ -156,16 +184,60 @@ export async function runAskProBrowserSession({
 export async function resumeAskProBrowserSession({
   cwd,
   sessionId,
+  thinkingTime,
+  temporary,
   verbose,
 }: RunAskProBrowserSessionOptions): Promise<void> {
   const paths = getAskProSessionPaths(cwd, sessionId);
   const prompt = await readAskProPrompt({ cwd, sessionId });
   const logger = buildAskProBrowserLogger(cwd, sessionId, verbose);
   const metadata = await readBrowserMetadata(paths.browser);
+  const chatgptUrl =
+    temporary === true
+      ? ASK_PRO_TEMPORARY_CHATGPT_URL
+      : temporary === false
+        ? ASK_PRO_CHATGPT_URL
+        : (metadata.url ?? ASK_PRO_CHATGPT_URL);
   const fallbackProfile = resolveResumeBrowserProfile(metadata);
   const attachRunning = !metadata.agentId;
+  if (temporary === false && isTemporaryAskProUrl(metadata.url ?? "")) {
+    await appendAskProLog(
+      cwd,
+      sessionId,
+      "Retrying Temporary Chat session in normal ChatGPT; opening managed browser submission.",
+    );
+    await runAskProBrowserSession({
+      cwd,
+      sessionId,
+      thinkingTime: thinkingTime ?? metadata.thinkingTime,
+      temporary: false,
+      chatgptUrl: ASK_PRO_CHATGPT_URL,
+      browserProfileDir: fallbackProfile,
+      agentId: metadata.agentId ?? null,
+      verbose,
+    });
+    return;
+  }
   if (!metadata.runtime) {
-    throw new Error(`session ${sessionId} has no saved browser runtime metadata`);
+    if (metadata.status !== "needs_user_auth") {
+      throw new Error(`session ${sessionId} has no saved browser runtime metadata`);
+    }
+    await appendAskProLog(
+      cwd,
+      sessionId,
+      "No saved browser runtime metadata; reopening managed browser submission.",
+    );
+    await runAskProBrowserSession({
+      cwd,
+      sessionId,
+      thinkingTime: thinkingTime ?? metadata.thinkingTime,
+      temporary: isTemporaryAskProUrl(chatgptUrl),
+      chatgptUrl,
+      browserProfileDir: fallbackProfile,
+      agentId: metadata.agentId ?? null,
+      verbose,
+    });
+    return;
   }
 
   await updateAskProStatus({ cwd, sessionId, status: "WAITING" });
@@ -178,7 +250,8 @@ export async function resumeAskProBrowserSession({
         manualLoginProfileDir: fallbackProfile,
         timeoutMs: DEFAULT_TIMEOUT_MS,
         inputTimeoutMs: 90_000,
-        url: metadata.url,
+        url: chatgptUrl,
+        thinkingTime: thinkingTime ?? metadata.thinkingTime,
       },
       logger,
       { promptPreview: prompt },
@@ -196,6 +269,8 @@ export async function resumeAskProBrowserSession({
         schemaVersion: 1,
         status: "completed",
         profileDir: fallbackProfile,
+        thinkingTime: thinkingTime ?? metadata.thinkingTime,
+        url: chatgptUrl,
       },
     });
     await ensureResponseZipManifest(paths.dir);
@@ -217,6 +292,16 @@ export async function resumeAskProBrowserSession({
       reason: error instanceof Error ? error.message : String(error),
     });
     throw error;
+  }
+}
+
+function isTemporaryAskProUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const value = (parsed.searchParams.get("temporary-chat") ?? "").trim().toLowerCase();
+    return value === "true" || value === "1" || value === "yes";
+  } catch {
+    return false;
   }
 }
 
@@ -363,6 +448,7 @@ interface AskProBrowserMetadata {
   status?: string;
   profileDir?: string;
   agentId?: string | null;
+  thinkingTime?: ThinkingTimeLevel;
   url?: string;
   runtime?: {
     chromePid?: number;

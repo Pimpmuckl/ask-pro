@@ -52,6 +52,8 @@ export interface AskProStatusFile {
   resumeCommand: string;
   harvestCommand: string;
   dryRun: boolean;
+  thinkingTime?: "extended";
+  temporary?: boolean;
   reason?: string;
 }
 
@@ -230,6 +232,35 @@ export async function updateAskProStatus({
   };
   await fs.writeFile(paths.status, `${JSON.stringify(next, null, 2)}\n`, "utf8");
   await appendAskProLog(cwd, sessionId, `status=${status}${reason ? ` reason=${reason}` : ""}`);
+  return next;
+}
+
+export async function updateAskProResumeCommand({
+  cwd,
+  sessionId,
+  resumeCommand,
+  harvestCommand,
+  thinkingTime,
+  temporary,
+}: {
+  cwd: string;
+  sessionId: string;
+  resumeCommand: string;
+  harvestCommand?: string;
+  thinkingTime?: "extended";
+  temporary?: boolean;
+}): Promise<AskProStatusFile> {
+  const paths = getAskProSessionPaths(cwd, sessionId);
+  const current = JSON.parse(await fs.readFile(paths.status, "utf8")) as AskProStatusFile;
+  const next: AskProStatusFile = {
+    ...current,
+    resumeCommand,
+    harvestCommand: harvestCommand ?? current.harvestCommand,
+    ...(thinkingTime ? { thinkingTime } : {}),
+    ...(temporary !== undefined ? { temporary } : {}),
+    updatedAt: new Date().toISOString(),
+  };
+  await fs.writeFile(paths.status, `${JSON.stringify(next, null, 2)}\n`, "utf8");
   return next;
 }
 
