@@ -96,7 +96,9 @@ describe("ask-pro cli", () => {
         cwd,
         env: {
           ...process.env,
-          ASK_PRO_SOURCE_CHECKOUT_LAUNCHER: "npm exec --yes pnpm@10.33.2 -- start --",
+          ASK_PRO_SOURCE_CHECKOUT_LAUNCHER:
+            'npm exec --yes pnpm@10.33.2 -- --dir "C:/Code/ask-pro" start --',
+          INIT_CWD: cwd,
         },
       },
     );
@@ -108,8 +110,34 @@ describe("ask-pro cli", () => {
     );
     expect(JSON.parse(statusRaw)).toMatchObject({
       resumeCommand: expect.stringMatching(
-        /^npm exec --yes pnpm@10\.33\.2 -- start -- --extended --resume /,
+        /^npm exec --yes pnpm@10\.33\.2 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --extended --resume /,
       ),
     });
+  }, 30000);
+
+  test("source-checkout launcher uses INIT_CWD as the project directory", async () => {
+    const projectCwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-source-cwd-"));
+    tempDirs.push(projectCwd);
+
+    const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
+    const tsxLoader = pathToFileURL(
+      path.join(process.cwd(), "node_modules", "tsx", "dist", "esm", "index.mjs"),
+    ).href;
+    await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--dry-run", "Review this."],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          ASK_PRO_SOURCE_CHECKOUT_LAUNCHER:
+            'npm exec --yes pnpm@10.33.2 -- --dir "C:/Code/ask-pro" start --',
+          INIT_CWD: projectCwd,
+        },
+      },
+    );
+
+    const sessions = await fs.readdir(path.join(projectCwd, ".ask-pro", "sessions"));
+    expect(sessions).toHaveLength(1);
   }, 30000);
 });

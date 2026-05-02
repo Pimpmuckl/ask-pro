@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import "dotenv/config";
 import path from "node:path";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import {
   createAskProSession,
   readAskProAnswer,
@@ -25,6 +25,7 @@ interface AskProOptions {
   copy?: string | boolean;
   extended?: boolean;
   temporary?: boolean;
+  cwd?: string;
   verbose?: boolean;
 }
 
@@ -46,6 +47,7 @@ program
     "request Extended Pro thinking; use only when a multi-hour wait is acceptable",
   )
   .option("--temporary", "start the run in ChatGPT Temporary Chat")
+  .addOption(new Option("--cwd <path>", "project working directory").hideHelp())
   .option("--verbose", "print browser automation diagnostics")
   .action(async (questionParts: string[], options: AskProOptions) => {
     try {
@@ -60,7 +62,7 @@ program
 await program.parseAsync(process.argv);
 
 async function runAskPro(question: string, options: AskProOptions): Promise<void> {
-  const cwd = process.cwd();
+  const cwd = resolveProjectCwd(options);
   if (options.status !== undefined) {
     const { status } = await readAskProStatus({ cwd, sessionId: optionSessionId(options.status) });
     console.log(JSON.stringify(status, null, 2));
@@ -85,6 +87,10 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
   }
   if (options.resume !== undefined) {
     const { status } = await readAskProStatus({ cwd, sessionId: optionSessionId(options.resume) });
+    const resumeCommand = buildResumeCommand(status.sessionId, options, cwd);
+    if (resumeCommand !== status.resumeCommand) {
+      await updateAskProResumeCommand({ cwd, sessionId: status.sessionId, resumeCommand });
+    }
     await submitOrResumeBrowserSession(cwd, status.sessionId, options);
     return;
   }
@@ -96,7 +102,7 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
     filePatterns: options.files ?? [],
     dryRun,
   });
-  const resumeCommand = buildResumeCommand(session.id, options);
+  const resumeCommand = buildResumeCommand(session.id, options, cwd);
   if (resumeCommand !== session.status.resumeCommand) {
     await updateAskProResumeCommand({ cwd, sessionId: session.id, resumeCommand });
     session.status.resumeCommand = resumeCommand;
@@ -135,13 +141,21 @@ async function submitOrResumeBrowserSession(
     status.status === "NEEDS_USER_AUTH"
   ) {
     console.log(`Reattaching to submitted ask-pro session: ${sessionId}`);
-    await resumeAskProBrowserSession({
-      cwd,
-      sessionId,
-      thinkingTime: requestedThinkingTime(options),
-      temporary: options.temporary,
-      verbose: options.verbose,
-    });
+    try {
+      await resumeAskProBrowserSession({
+        cwd,
+        sessionId,
+        thinkingTime: requestedThinkingTime(options),
+        temporary: options.temporary,
+        verbose: options.verbose,
+      });
+    } catch (error) {
+      if (error instanceof AskProNeedsAuthError) {
+        printAuthInstructions(sessionId, options, cwd, error);
+        return;
+      }
+      throw error;
+    }
     console.log(`Pro response harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
     return;
   }
@@ -157,24 +171,7 @@ async function submitOrResumeBrowserSession(
     console.log(`Pro response harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
   } catch (error) {
     if (error instanceof AskProNeedsAuthError) {
-      console.log("ChatGPT authentication is required.");
-      console.log("I opened a browser window. Please log into ChatGPT there.");
-      console.log("Do not paste credentials into this terminal or agent chat.");
-      const resumeCommand = buildResumeCommand(sessionId, options);
-      console.log(`When the message composer is visible, run: ${resumeCommand}`);
-      console.log(
-        JSON.stringify(
-          {
-            status: "NEEDS_USER_AUTH",
-            sessionId,
-            reason: error.reason,
-            resumeCommand,
-            browserProfile: error.browserProfile,
-          },
-          null,
-          2,
-        ),
-      );
+      printAuthInstructions(sessionId, options, cwd, error);
       return;
     }
     throw error;
@@ -185,9 +182,11 @@ function requestedThinkingTime(options: AskProOptions): "extended" | undefined {
   return options.extended ? "extended" : undefined;
 }
 
-function buildResumeCommand(sessionId: string, options: AskProOptions): string {
+function buildResumeCommand(sessionId: string, options: AskProOptions, cwd: string): string {
   const launcher = buildLauncherCommand();
   const flags = [
+    needsExplicitCwd(launcher) ? "--cwd" : null,
+    needsExplicitCwd(launcher) ? quoteCommandArg(cwd) : null,
     options.extended ? "--extended" : null,
     options.temporary ? "--temporary" : null,
     "--resume",
@@ -205,4 +204,48 @@ function buildLauncherCommand(): string {
     return "npm exec --yes pnpm@10.33.2 -- start --";
   }
   return "ask-pro";
+}
+
+function needsExplicitCwd(launcher: string): boolean {
+  return launcher !== "ask-pro";
+}
+
+function resolveProjectCwd(options: AskProOptions): string {
+  if (options.cwd) {
+    return path.resolve(options.cwd);
+  }
+  if (process.env.ASK_PRO_SOURCE_CHECKOUT_LAUNCHER && process.env.INIT_CWD) {
+    return path.resolve(process.env.INIT_CWD);
+  }
+  return process.cwd();
+}
+
+function printAuthInstructions(
+  sessionId: string,
+  options: AskProOptions,
+  cwd: string,
+  error: AskProNeedsAuthError,
+): void {
+  console.log("ChatGPT authentication is required.");
+  console.log("I opened a browser window. Please log into ChatGPT there.");
+  console.log("Do not paste credentials into this terminal or agent chat.");
+  const resumeCommand = buildResumeCommand(sessionId, options, cwd);
+  console.log(`When the message composer is visible, run: ${resumeCommand}`);
+  console.log(
+    JSON.stringify(
+      {
+        status: "NEEDS_USER_AUTH",
+        sessionId,
+        reason: error.reason,
+        resumeCommand,
+        browserProfile: error.browserProfile,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+function quoteCommandArg(value: string): string {
+  return `"${value.replace(/\\/g, "/").replace(/(["$`])/g, "\\$1")}"`;
 }

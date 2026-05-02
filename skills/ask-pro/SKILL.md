@@ -32,7 +32,7 @@ When invoked:
 4. Write the prompt yourself; include constraints, what you inspected, the files attached, options considered, and the output you need.
 5. Run the smallest useful command, usually `ask-pro --files "<glob>" "<prompt>"`.
    If `ask-pro` is not on `PATH`, run it from the source checkout instead:
-   `cd C:/Code/ask-pro && npm exec --yes pnpm@10.33.2 -- start -- --files "<glob>" "<prompt>"`.
+   `npm exec --yes pnpm@10.33.2 -- --dir C:/Code/ask-pro start -- --files "<glob>" "<prompt>"`.
 6. If auth is required, stop and ask the human to log in in the opened browser.
 7. Resume or harvest as instructed by the CLI.
 8. Treat the answer as advisory; turn it into your own plan before editing code.

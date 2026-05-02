@@ -44,8 +44,7 @@ Requires Node 24+.
 If `ask-pro` is not on `PATH`, agents can still use the source checkout:
 
 ```powershell
-cd C:\Code\ask-pro
-npm exec --yes pnpm@10.33.2 -- start -- "Review the staged implementation plan."
+npm exec --yes pnpm@10.33.2 -- --dir C:\Code\ask-pro start -- "Review the staged implementation plan."
 ```
 
 ### Codex Plugin

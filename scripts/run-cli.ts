@@ -7,15 +7,20 @@ const rawArgs = process.argv.slice(2);
 const args: string[] = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(here, "..");
 const cliEntry = path.join(here, "../bin/ask-pro-cli.js");
 
 const child = spawn(process.execPath, ["--", cliEntry, ...args], {
   env: {
     ...process.env,
-    ASK_PRO_SOURCE_CHECKOUT_LAUNCHER: "npm exec --yes pnpm@10.33.2 -- start --",
+    ASK_PRO_SOURCE_CHECKOUT_LAUNCHER: `npm exec --yes pnpm@10.33.2 -- --dir ${quoteCommandArg(repoRoot)} start --`,
   },
   stdio: "inherit",
 });
 child.on("exit", (code) => {
   process.exit(code ?? 0);
 });
+
+function quoteCommandArg(value: string): string {
+  return `"${value.replace(/\\/g, "/").replace(/(["$`])/g, "\\$1")}"`;
+}
