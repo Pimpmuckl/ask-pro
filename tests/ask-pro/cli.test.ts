@@ -234,9 +234,45 @@ describe("ask-pro cli", () => {
     expect(stderr).toBe("");
     expect(stdout).toMatch(/^ask_pro\n/);
     expect(stdout).toContain("  state: dry_run_complete\n");
+    expect(stdout).toContain("  action: resume\n");
+    expect(stdout).toContain('  resume: "ask-pro --resume ');
+    expect(stdout).not.toContain("  target: ");
+  }, 30000);
+
+  test("prints copy target only for answer-bearing sessions", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-copy-target-"));
+    tempDirs.push(cwd);
+
+    const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
+    const tsxLoader = pathToFileURL(
+      path.join(process.cwd(), "node_modules", "tsx", "dist", "esm", "index.mjs"),
+    ).href;
+    await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--dry-run", "Review this."],
+      {
+        cwd,
+      },
+    );
+    const sessions = await fs.readdir(path.join(cwd, ".ask-pro", "sessions"));
+    const statusPath = path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "status.json");
+    const status = JSON.parse(await fs.readFile(statusPath, "utf8"));
+    await fs.writeFile(
+      statusPath,
+      `${JSON.stringify({ ...status, status: "READY_TO_HARVEST" }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const { stdout, stderr } = await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--copy"],
+      { cwd },
+    );
+
+    expect(stderr).toBe("");
+    expect(stdout).toContain("  state: ready_to_harvest\n");
     expect(stdout).toContain("  action: copy_target\n");
     expect(stdout).toContain("  target: ");
-    expect(stdout).toContain("ANSWER.md");
   }, 30000);
 
   test("does not print harvest command after session is harvested", async () => {
@@ -267,6 +303,43 @@ describe("ask-pro cli", () => {
     expect(stdout).toContain("  action: read_answer\n");
     expect(stdout).toContain("  answer: ");
     expect(stdout).not.toContain("  harvest: ");
+  }, 30000);
+
+  test("prints answer path for ready-to-harvest status", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-ready-status-"));
+    tempDirs.push(cwd);
+
+    const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
+    const tsxLoader = pathToFileURL(
+      path.join(process.cwd(), "node_modules", "tsx", "dist", "esm", "index.mjs"),
+    ).href;
+    await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--dry-run", "Review this."],
+      {
+        cwd,
+      },
+    );
+    const sessions = await fs.readdir(path.join(cwd, ".ask-pro", "sessions"));
+    const statusPath = path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "status.json");
+    const status = JSON.parse(await fs.readFile(statusPath, "utf8"));
+    await fs.writeFile(
+      statusPath,
+      `${JSON.stringify({ ...status, status: "READY_TO_HARVEST" }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const { stdout, stderr } = await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--status"],
+      { cwd },
+    );
+
+    expect(stderr).toBe("");
+    expect(stdout).toContain("  state: ready_to_harvest\n");
+    expect(stdout).toContain("  action: harvest\n");
+    expect(stdout).toContain("  answer: ");
+    expect(stdout).toContain('  harvest: "ask-pro --harvest ');
   }, 30000);
 
   test("prints errors as structured stdout", async () => {

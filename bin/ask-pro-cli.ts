@@ -83,7 +83,13 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
   if (options.harvest !== undefined) {
     const result = await readAskProAnswer({ cwd, sessionId: optionSessionId(options.harvest) });
     await writeStdout(result.answer);
-    await updateAskProStatus({ cwd, sessionId: result.sessionId, status: "HARVESTED" });
+    try {
+      await updateAskProStatus({ cwd, sessionId: result.sessionId, status: "HARVESTED" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`ask-pro harvest status update failed: ${message}`);
+      process.exitCode = 1;
+    }
     return;
   }
   if (options.copy !== undefined) {
@@ -91,12 +97,16 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
       cwd,
       sessionId: optionSessionId(options.copy),
     });
-    writeToon("ask_pro", {
-      session: status.sessionId,
-      state: normalizeState(status.status),
-      target: path.join(dir, "ANSWER.md"),
-      action: "copy_target",
-    });
+    if (isAnswerBearingStatus(status)) {
+      writeToon("ask_pro", {
+        session: status.sessionId,
+        state: normalizeState(status.status),
+        target: path.join(dir, "ANSWER.md"),
+        action: "copy_target",
+      });
+    } else {
+      printStatusRecord(status, { profile: await readStatusBrowserProfile(cwd, status) });
+    }
     return;
   }
   if (options.resume !== undefined) {
@@ -389,9 +399,11 @@ function answerPath(sessionId: string): string {
 }
 
 function answerExtraForStatus(status: AskProStatusFile, sessionId: string): AskProToonFields {
-  return ["COMPLETED", "HARVESTED"].includes(status.status)
-    ? { answer: answerPath(sessionId) }
-    : {};
+  return isAnswerBearingStatus(status) ? { answer: answerPath(sessionId) } : {};
+}
+
+function isAnswerBearingStatus(status: AskProStatusFile): boolean {
+  return ["COMPLETED", "READY_TO_HARVEST", "HARVESTED"].includes(status.status);
 }
 
 async function readStatusBrowserProfile(
