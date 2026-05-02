@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 const ASK_PRO_STATE_DIR = path.join(os.homedir(), ".agents", "skills", "ask-pro");
+const RESOLVED_AGENT_ID_PATTERN = /^[a-z0-9._-]+-[a-f0-9]{10}$/;
 
 export function defaultAskProBrowserProfileDir(env: NodeJS.ProcessEnv = process.env): string {
   const agentId = resolveAskProAgentId(env);
@@ -10,9 +11,11 @@ export function defaultAskProBrowserProfileDir(env: NodeJS.ProcessEnv = process.
 }
 
 export function askProBrowserProfileDirForAgentId(agentId: string | null | undefined): string {
-  return agentId
-    ? path.join(ASK_PRO_STATE_DIR, "agents", agentId, "browser-profile")
-    : path.join(ASK_PRO_STATE_DIR, "browser-profile");
+  if (!agentId) return path.join(ASK_PRO_STATE_DIR, "browser-profile");
+  if (!RESOLVED_AGENT_ID_PATTERN.test(agentId)) {
+    throw new Error("Stored ask-pro agent id is invalid.");
+  }
+  return path.join(ASK_PRO_STATE_DIR, "agents", agentId, "browser-profile");
 }
 
 export function resolveAskProAgentId(env: NodeJS.ProcessEnv = process.env): string | null {

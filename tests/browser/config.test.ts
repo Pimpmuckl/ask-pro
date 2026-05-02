@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { resolveBrowserConfig } from "../../src/browser/config.js";
 import { CHATGPT_URL } from "../../src/browser/constants.js";
 import {
+  askProBrowserProfileDirForAgentId,
   defaultAskProBrowserProfileDir,
   resolveAskProAgentId,
 } from "../../src/browser/profilePaths.js";
@@ -82,6 +83,15 @@ describe("resolveBrowserConfig", () => {
     expect(second).toMatch(/^review.t1-[a-f0-9]{10}$/);
     expect(first).not.toBe(second);
     expect(reserved).toMatch(/^con-[a-f0-9]{10}$/);
+  });
+
+  test("rejects malformed stored agent ids before deriving a profile path", () => {
+    expect(() => askProBrowserProfileDirForAgentId("review-t1")).toThrow(
+      /stored ask-pro agent id is invalid/i,
+    );
+    expect(() => askProBrowserProfileDirForAgentId("../review-t1-59cd6bada6")).toThrow(
+      /stored ask-pro agent id is invalid/i,
+    );
   });
 
   test("rejects padded explicit agent ids instead of silently aliasing them", () => {
