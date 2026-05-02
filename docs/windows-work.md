@@ -5,6 +5,8 @@ Read this when working on `ask_pro` from Windows and add new findings here.
 - Prefer PowerShell plus `pnpm` directly.
 - `ask-pro` stores project sessions under `.ask-pro/` and the persistent browser
   profile under `C:\Users\<you>\.agents\skills\ask-pro\browser-profile`.
+  Set `ASK_PRO_AGENT_ID` for an isolated agent profile under
+  `C:\Users\<you>\.agents\skills\ask-pro\agents\<id>\browser-profile`.
 - Browser login is human-controlled. If ChatGPT asks for login, MFA, or a
   challenge, leave Chrome open and resume with `ask-pro --resume <session-id>`.
 - Chrome DevTools state is recorded in each session's `browser.json`; use the

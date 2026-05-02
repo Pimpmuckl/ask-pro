@@ -1,7 +1,15 @@
-import { describe, expect, test } from "vitest";
+import path from "node:path";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { resolveBrowserConfig } from "../../src/browser/config.js";
 import { CHATGPT_URL } from "../../src/browser/constants.js";
-import { defaultAskProBrowserProfileDir } from "../../src/browser/profilePaths.js";
+import {
+  defaultAskProBrowserProfileDir,
+  resolveAskProAgentId,
+} from "../../src/browser/profilePaths.js";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("resolveBrowserConfig", () => {
   test("returns defaults when config missing", () => {
@@ -50,6 +58,18 @@ describe("resolveBrowserConfig", () => {
     const resolved = resolveBrowserConfig({ manualLogin: true });
 
     expect(resolved.manualLoginProfileDir).toBe(defaultAskProBrowserProfileDir());
+  });
+
+  test("uses an isolated browser profile when ASK_PRO_AGENT_ID is set", () => {
+    vi.stubEnv("ASK_PRO_AGENT_ID", "Review T1 / Windows");
+    const resolved = resolveBrowserConfig({ manualLogin: true });
+    const profileDir = defaultAskProBrowserProfileDir();
+
+    expect(resolveAskProAgentId()).toBe("review-t1-windows");
+    expect(resolved.manualLoginProfileDir).toBe(profileDir);
+    expect(profileDir).toContain(
+      path.join(".agents", "skills", "ask-pro", "agents", "review-t1-windows", "browser-profile"),
+    );
   });
 
   test("rejects temporary chat URLs when desiredModel is Pro", () => {

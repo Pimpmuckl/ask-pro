@@ -12,6 +12,15 @@ Project dir:  .ask-pro/
 Global dir:   ~/.agents/skills/ask-pro/
 ```
 
+Agent-specific browser profiles:
+
+```bash
+ASK_PRO_AGENT_ID=review-t1 ask-pro "<question>"
+```
+
+This stores the persistent browser profile under
+`~/.agents/skills/ask-pro/agents/review-t1/browser-profile`.
+
 ## Avoid
 
 Do not use:

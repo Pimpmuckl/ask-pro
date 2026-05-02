@@ -83,6 +83,8 @@ Preferred order:
 
 1. attach to running Chrome if available and user-approved
 2. persistent automation profile at `~/.agents/skills/ask-pro/browser-profile`
+   or `~/.agents/skills/ask-pro/agents/<id>/browser-profile` when
+   `ASK_PRO_AGENT_ID` is set
 3. headful manual-login browser
 4. headless only after auth has been verified
 
