@@ -155,6 +155,44 @@ describe("ask-pro browser runner", () => {
     expect(manifest.responseZip.status).toBe("unavailable");
   });
 
+  test("reattach preserves recorded extended thinking", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-thinking-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review the saved extended-thinking browser session.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        thinkingTime: "extended",
+        profileDir: path.join(cwd, "profile"),
+        runtime: {
+          chromePort: 9223,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-thinking",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
+
+    const firstCall = resumeBrowserSessionMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[1]).toMatchObject({
+      thinkingTime: "extended",
+    });
+    const metadata = JSON.parse(
+      await fs.readFile(path.join(session.dir, "browser.json"), "utf8"),
+    ) as { thinkingTime?: string };
+    expect(metadata.thinkingTime).toBe("extended");
+  });
+
   test("reattach fallback uses recorded agent id instead of ambient env", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-agent-"));
     tempDirs.push(cwd);

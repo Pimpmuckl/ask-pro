@@ -41,6 +41,8 @@
   to request Extended Pro thinking for deep, multi-hour escalations.
 - Browser: launch ask-pro runs with ChatGPT's `?temporary-chat=true` URL so new
   Pro escalations start in Temporary Chat without relying on the UI toggle.
+- Browser: preserve requested Extended Pro thinking across auth and submitted
+  session resume paths.
 - Browser: force an English browser locale for ask-pro runs to reduce selector
   drift from localized ChatGPT UI.
 - Browser: detect the current top-right temporary-chat control shape without
@@ -54,6 +56,8 @@
   incomplete/reattachable runs available.
 - Plugin: normalize the Codex plugin identity to `ask-pro`, add required YAML
   frontmatter, and tighten the skill text into a concise agent runbook.
+- Plugin: make `pnpm run plugin:refresh` use a Node entrypoint so the package
+  script is not Windows-shell-specific.
 
 ### Docs
 

@@ -126,7 +126,12 @@ async function submitOrResumeBrowserSession(
     status.status === "WAIT_TIMED_OUT"
   ) {
     console.log(`Reattaching to submitted ask-pro session: ${sessionId}`);
-    await resumeAskProBrowserSession({ cwd, sessionId, verbose: options.verbose });
+    await resumeAskProBrowserSession({
+      cwd,
+      sessionId,
+      thinkingTime: requestedThinkingTime(options),
+      verbose: options.verbose,
+    });
     console.log(`Pro response harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
     return;
   }
@@ -135,7 +140,7 @@ async function submitOrResumeBrowserSession(
     await runAskProBrowserSession({
       cwd,
       sessionId,
-      thinkingTime: options.extended ? "extended" : "standard",
+      thinkingTime: requestedThinkingTime(options),
       verbose: options.verbose,
     });
     console.log(`Pro response harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
@@ -144,14 +149,15 @@ async function submitOrResumeBrowserSession(
       console.log("ChatGPT authentication is required.");
       console.log("I opened a browser window. Please log into ChatGPT there.");
       console.log("Do not paste credentials into this terminal or agent chat.");
-      console.log(`When the message composer is visible, run: ask-pro --resume ${sessionId}`);
+      const resumeCommand = `ask-pro${options.extended ? " --extended" : ""} --resume ${sessionId}`;
+      console.log(`When the message composer is visible, run: ${resumeCommand}`);
       console.log(
         JSON.stringify(
           {
             status: "NEEDS_USER_AUTH",
             sessionId,
             reason: error.reason,
-            resumeCommand: `ask-pro --resume ${sessionId}`,
+            resumeCommand,
             browserProfile: error.browserProfile,
           },
           null,
@@ -162,4 +168,8 @@ async function submitOrResumeBrowserSession(
     }
     throw error;
   }
+}
+
+function requestedThinkingTime(options: AskProOptions): "extended" | undefined {
+  return options.extended ? "extended" : undefined;
 }

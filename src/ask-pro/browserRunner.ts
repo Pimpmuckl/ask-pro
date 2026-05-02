@@ -36,13 +36,15 @@ export interface RunAskProBrowserSessionOptions {
 export async function runAskProBrowserSession({
   cwd,
   sessionId,
-  thinkingTime = "standard",
+  thinkingTime,
   verbose,
 }: RunAskProBrowserSessionOptions): Promise<BrowserRunResult> {
   const paths = getAskProSessionPaths(cwd, sessionId);
   const prompt = await readAskProPrompt({ cwd, sessionId });
   const agentId = resolveAskProAgentId();
   const browserProfile = askProBrowserProfileDirForAgentId(agentId);
+  const metadata = await readBrowserMetadata(paths.browser).catch(() => null);
+  const requestedThinkingTime = thinkingTime ?? metadata?.thinkingTime ?? "standard";
   await fs.mkdir(browserProfile, { recursive: true });
   await updateAskProStatus({ cwd, sessionId, status: "BROWSER_STARTING" });
 
@@ -69,7 +71,7 @@ export async function runAskProBrowserSession({
         assistantRecheckTimeoutMs: 180_000,
         desiredModel: "GPT-5.5 Pro",
         modelStrategy: "select",
-        thinkingTime,
+        thinkingTime: requestedThinkingTime,
         acceptLanguage: "en-US,en",
         keepBrowser: true,
         allowCookieErrors: true,
@@ -86,6 +88,7 @@ export async function runAskProBrowserSession({
             status: "running",
             agentId,
             profileDir: browserProfile,
+            thinkingTime: requestedThinkingTime,
             runtime,
           },
         });
@@ -110,6 +113,7 @@ export async function runAskProBrowserSession({
         status: "completed",
         agentId,
         profileDir: browserProfile,
+        thinkingTime: requestedThinkingTime,
         runtime: browserResultToRuntime(result),
       },
     });
@@ -126,6 +130,7 @@ export async function runAskProBrowserSession({
           status: "needs_user_auth",
           agentId,
           profileDir: browserProfile,
+          thinkingTime: requestedThinkingTime,
           reason: classifyBrowserError(error),
         },
       });
@@ -160,6 +165,7 @@ export async function runAskProBrowserSession({
 export async function resumeAskProBrowserSession({
   cwd,
   sessionId,
+  thinkingTime,
   verbose,
 }: RunAskProBrowserSessionOptions): Promise<void> {
   const paths = getAskProSessionPaths(cwd, sessionId);
@@ -183,6 +189,7 @@ export async function resumeAskProBrowserSession({
         timeoutMs: DEFAULT_TIMEOUT_MS,
         inputTimeoutMs: 90_000,
         url: metadata.url,
+        thinkingTime: thinkingTime ?? metadata.thinkingTime,
       },
       logger,
       { promptPreview: prompt },
@@ -200,6 +207,7 @@ export async function resumeAskProBrowserSession({
         schemaVersion: 1,
         status: "completed",
         profileDir: fallbackProfile,
+        thinkingTime: thinkingTime ?? metadata.thinkingTime,
       },
     });
     await ensureResponseZipManifest(paths.dir);
@@ -367,6 +375,7 @@ interface AskProBrowserMetadata {
   status?: string;
   profileDir?: string;
   agentId?: string | null;
+  thinkingTime?: ThinkingTimeLevel;
   url?: string;
   runtime?: {
     chromePid?: number;
