@@ -82,7 +82,8 @@ describe("resolveBrowserConfig", () => {
 
     expect(first).toMatch(/^review-t1-[a-f0-9]{10}$/);
     expect(second).toMatch(/^review-t1-[a-f0-9]{10}$/);
-    expect(caseNoise).toBe(first);
+    expect(caseNoise).toMatch(/^review-t1-[a-f0-9]{10}$/);
+    expect(caseNoise).not.toBe(first);
     expect(first).not.toBe(second);
     expect(invalid).toMatch(/^agent-[a-f0-9]{10}$/);
     expect(reserved).toMatch(/^con-[a-f0-9]{10}$/);
