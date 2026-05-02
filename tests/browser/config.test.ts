@@ -76,11 +76,13 @@ describe("resolveBrowserConfig", () => {
   test("keeps colliding agent slugs isolated with a stable hash suffix", () => {
     const first = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review t1" });
     const second = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review/t1" });
+    const caseNoise = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "Review T1" });
     const invalid = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "🔒" });
     const reserved = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "con" });
 
     expect(first).toMatch(/^review-t1-[a-f0-9]{10}$/);
     expect(second).toMatch(/^review-t1-[a-f0-9]{10}$/);
+    expect(caseNoise).toBe(first);
     expect(first).not.toBe(second);
     expect(invalid).toMatch(/^agent-[a-f0-9]{10}$/);
     expect(reserved).toMatch(/^con-[a-f0-9]{10}$/);

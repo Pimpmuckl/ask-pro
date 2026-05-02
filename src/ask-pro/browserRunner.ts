@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { BrowserAutomationError } from "../browser/errors.js";
-import { defaultAskProBrowserProfileDir, resolveAskProAgentId } from "../browser/profilePaths.js";
+import {
+  askProBrowserProfileDirForAgentId,
+  defaultAskProBrowserProfileDir,
+  resolveAskProAgentId,
+} from "../browser/profilePaths.js";
 import { runBrowserMode, type BrowserRunResult } from "../browserMode.js";
 import { resumeBrowserSession } from "../browser/reattach.js";
 import type { BrowserLogger } from "../browser/types.js";
@@ -154,7 +158,10 @@ export async function resumeAskProBrowserSession({
   const prompt = await readAskProPrompt({ cwd, sessionId });
   const logger = buildAskProBrowserLogger(cwd, sessionId, verbose);
   const metadata = await readBrowserMetadata(paths.browser);
-  const fallbackProfile = defaultAskProBrowserProfileDir();
+  const fallbackProfile =
+    metadata.profileDir ??
+    askProBrowserProfileDirForAgentId(metadata.agentId) ??
+    defaultAskProBrowserProfileDir();
   if (!metadata.runtime) {
     throw new Error(`session ${sessionId} has no saved browser runtime metadata`);
   }
@@ -165,7 +172,7 @@ export async function resumeAskProBrowserSession({
       metadata.runtime,
       {
         manualLogin: true,
-        manualLoginProfileDir: metadata.profileDir ?? fallbackProfile,
+        manualLoginProfileDir: fallbackProfile,
         timeoutMs: DEFAULT_TIMEOUT_MS,
         inputTimeoutMs: 90_000,
         url: metadata.url,
@@ -185,7 +192,7 @@ export async function resumeAskProBrowserSession({
         ...metadata,
         schemaVersion: 1,
         status: "completed",
-        profileDir: metadata.profileDir ?? fallbackProfile,
+        profileDir: fallbackProfile,
       },
     });
     await ensureResponseZipManifest(paths.dir);
@@ -198,11 +205,7 @@ export async function resumeAskProBrowserSession({
         status: "NEEDS_USER_AUTH",
         reason: classifyBrowserError(error),
       });
-      throw new AskProNeedsAuthError(
-        sessionId,
-        metadata.profileDir ?? fallbackProfile,
-        classifyBrowserError(error),
-      );
+      throw new AskProNeedsAuthError(sessionId, fallbackProfile, classifyBrowserError(error));
     }
     await updateAskProStatus({
       cwd,

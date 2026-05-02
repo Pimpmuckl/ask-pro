@@ -25,6 +25,7 @@ const tempDirs: string[] = [];
 
 afterEach(async () => {
   resumeBrowserSessionMock.mockClear();
+  vi.unstubAllEnvs();
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
@@ -67,5 +68,47 @@ describe("ask-pro browser runner", () => {
       await fs.readFile(path.join(session.dir, "PRO_OUTPUT_MANIFEST.json"), "utf8"),
     );
     expect(manifest.responseZip.status).toBe("unavailable");
+  });
+
+  test("reattach fallback uses recorded agent id instead of ambient env", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-agent-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review the saved agent browser session.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        agentId: "review-t1-59cd6bada6",
+        runtime: {
+          chromePort: 9333,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-agent",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    vi.stubEnv("ASK_PRO_AGENT_ID", "other-agent");
+    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
+
+    const firstCall = resumeBrowserSessionMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[1]).toMatchObject({
+      manualLoginProfileDir: expect.stringContaining(
+        path.join("agents", "review-t1-59cd6bada6", "browser-profile"),
+      ),
+    });
+    const metadata = JSON.parse(
+      await fs.readFile(path.join(session.dir, "browser.json"), "utf8"),
+    ) as { profileDir?: string };
+    expect(metadata.profileDir).toContain(
+      path.join("agents", "review-t1-59cd6bada6", "browser-profile"),
+    );
   });
 });
