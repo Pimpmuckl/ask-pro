@@ -100,6 +100,7 @@ describe("ask-pro browser runner", () => {
 
     const firstCall = resumeBrowserSessionMock.mock.calls[0] as unknown[] | undefined;
     expect(firstCall?.[1]).toMatchObject({
+      attachRunning: false,
       manualLoginProfileDir: expect.stringContaining(
         path.join("agents", "review-t1-59cd6bada6", "browser-profile"),
       ),

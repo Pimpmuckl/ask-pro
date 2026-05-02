@@ -89,6 +89,12 @@ describe("resolveBrowserConfig", () => {
     expect(reserved).toMatch(/^con-[a-f0-9]{10}$/);
   });
 
+  test("rejects padded explicit agent ids instead of silently aliasing them", () => {
+    expect(() => resolveAskProAgentId({ ASK_PRO_AGENT_ID: " review-t1 " })).toThrow(
+      /must not start or end with whitespace/i,
+    );
+  });
+
   test("rejects temporary chat URLs when desiredModel is Pro", () => {
     expect(() =>
       resolveBrowserConfig({

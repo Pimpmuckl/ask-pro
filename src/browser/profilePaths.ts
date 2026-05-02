@@ -16,8 +16,13 @@ export function askProBrowserProfileDirForAgentId(agentId: string | null | undef
 }
 
 export function resolveAskProAgentId(env: NodeJS.ProcessEnv = process.env): string | null {
-  const raw = env.ASK_PRO_AGENT_ID?.trim();
+  const value = env.ASK_PRO_AGENT_ID;
+  if (value === undefined) return null;
+  const raw = value.trim();
   if (!raw) return null;
+  if (raw !== value) {
+    throw new Error("ASK_PRO_AGENT_ID must not start or end with whitespace.");
+  }
   const slug = raw
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")

@@ -53,6 +53,7 @@ export async function runAskProBrowserSession({
       ],
       config: {
         manualLogin: true,
+        attachRunning: false,
         manualLoginProfileDir: browserProfile,
         manualLoginWaitMs: MANUAL_LOGIN_WAIT_MS,
         timeoutMs: DEFAULT_TIMEOUT_MS,
@@ -172,6 +173,7 @@ export async function resumeAskProBrowserSession({
       metadata.runtime,
       {
         manualLogin: true,
+        attachRunning: false,
         manualLoginProfileDir: fallbackProfile,
         timeoutMs: DEFAULT_TIMEOUT_MS,
         inputTimeoutMs: 90_000,
