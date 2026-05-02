@@ -5,14 +5,16 @@ ask_pro-specific notes:
 - Do not assume backward compatibility. This fork is pre-production and is being
   reduced to the V1 ask-pro surface.
 - Keep the CLI small: `ask-pro "<question>"`, `--files`, `--dry-run`,
-  `--resume`, `--status`, `--harvest`, `--copy`, `--extended`, and `--verbose`.
+  `--resume`, `--status`, `--harvest`, `--copy`, `--extended`, `--temporary`,
+  and `--verbose`.
 - Browser auth is human-controlled. Never ask for, type, read, or log passwords,
   MFA codes, recovery codes, session cookies, or raw auth tokens.
 - Browser “Pro thinking” gate: never click or auto-click ChatGPT's `Answer now`
   button. Treat it as a placeholder and wait for the real assistant response.
-- Current ChatGPT UI note: the model selector can be the composer pill; Pro effort
-  may live under Configure / `Pro thinking effort`; temporary chat can be a
-  top-right checkbox/toggle.
+- Current ChatGPT UI note: the model selector can be the composer pill; Pro
+  effort may live under Configure / `Pro thinking effort`; temporary chat can be
+  a top-right checkbox/toggle. Temporary Chat is opt-in with `--temporary`
+  because it is less recoverable after browser/tab loss.
 - Project sessions live under `.ask-pro/sessions/<id>/`.
 - The default persistent browser profile lives under
   `~/.agents/skills/ask-pro/browser-profile`. Set `ASK_PRO_AGENT_ID` to give an

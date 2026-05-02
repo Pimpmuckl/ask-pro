@@ -18,7 +18,8 @@
 ### Added
 
 - Add the minimal V1 CLI: `ask-pro "<question>"`, `--files`, `--dry-run`,
-  `--resume`, `--status`, `--harvest`, `--copy`, `--extended`, and `--verbose`.
+  `--resume`, `--status`, `--harvest`, `--copy`, `--extended`, `--temporary`,
+  and `--verbose`.
 - Add the `$ask-pro` Codex skill and plugin skeleton.
 - Add `pnpm run plugin:refresh` to refresh the local Codex plugin cache from
   the repo source without hand-copying generated cache files.
@@ -39,8 +40,11 @@
 - Browser: request Extended Pro thinking when available.
 - Browser: default ask-pro runs to normal Pro thinking effort; use `--extended`
   to request Extended Pro thinking for deep, multi-hour escalations.
-- Browser: launch ask-pro runs with ChatGPT's `?temporary-chat=true` URL so new
-  Pro escalations start in Temporary Chat without relying on the UI toggle.
+- Browser: add `--temporary` to launch ask-pro runs with ChatGPT's
+  `?temporary-chat=true` URL when ephemeral ChatGPT history is more important
+  than closed-tab recovery.
+- Browser: persist the configured ChatGPT URL in browser metadata for relaunch
+  resume paths.
 - Browser: preserve requested Extended Pro thinking across auth and submitted
   session resume paths.
 - Browser: force an English browser locale for ask-pro runs to reduce selector

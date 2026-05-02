@@ -6,6 +6,7 @@ import {
   createAskProSession,
   readAskProAnswer,
   readAskProStatus,
+  updateAskProResumeCommand,
   updateAskProStatus,
 } from "../src/ask-pro/session.js";
 import {
@@ -23,6 +24,7 @@ interface AskProOptions {
   harvest?: string | boolean;
   copy?: string | boolean;
   extended?: boolean;
+  temporary?: boolean;
   verbose?: boolean;
 }
 
@@ -43,6 +45,7 @@ program
     "--extended",
     "request Extended Pro thinking; use only when a multi-hour wait is acceptable",
   )
+  .option("--temporary", "start the run in ChatGPT Temporary Chat")
   .option("--verbose", "print browser automation diagnostics")
   .action(async (questionParts: string[], options: AskProOptions) => {
     try {
@@ -93,6 +96,11 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
     filePatterns: options.files ?? [],
     dryRun,
   });
+  const resumeCommand = buildResumeCommand(session.id, options);
+  if (resumeCommand !== session.status.resumeCommand) {
+    await updateAskProResumeCommand({ cwd, sessionId: session.id, resumeCommand });
+    session.status.resumeCommand = resumeCommand;
+  }
   console.log(`ask-pro session created: .ask-pro/sessions/${session.id}`);
   console.log(`Status: ${session.status.status}`);
   console.log(`Context files: ${session.manifest.includedFiles.length}`);
@@ -130,6 +138,7 @@ async function submitOrResumeBrowserSession(
       cwd,
       sessionId,
       thinkingTime: requestedThinkingTime(options),
+      temporary: options.temporary,
       verbose: options.verbose,
     });
     console.log(`Pro response harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
@@ -141,6 +150,7 @@ async function submitOrResumeBrowserSession(
       cwd,
       sessionId,
       thinkingTime: requestedThinkingTime(options),
+      temporary: options.temporary,
       verbose: options.verbose,
     });
     console.log(`Pro response harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
@@ -149,7 +159,7 @@ async function submitOrResumeBrowserSession(
       console.log("ChatGPT authentication is required.");
       console.log("I opened a browser window. Please log into ChatGPT there.");
       console.log("Do not paste credentials into this terminal or agent chat.");
-      const resumeCommand = `ask-pro${options.extended ? " --extended" : ""} --resume ${sessionId}`;
+      const resumeCommand = buildResumeCommand(sessionId, options);
       console.log(`When the message composer is visible, run: ${resumeCommand}`);
       console.log(
         JSON.stringify(
@@ -172,4 +182,14 @@ async function submitOrResumeBrowserSession(
 
 function requestedThinkingTime(options: AskProOptions): "extended" | undefined {
   return options.extended ? "extended" : undefined;
+}
+
+function buildResumeCommand(sessionId: string, options: AskProOptions): string {
+  const flags = [
+    options.extended ? "--extended" : null,
+    options.temporary ? "--temporary" : null,
+    "--resume",
+    sessionId,
+  ].filter(Boolean);
+  return `ask-pro ${flags.join(" ")}`;
 }

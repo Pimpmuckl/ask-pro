@@ -46,7 +46,8 @@ $cacheRoot = Join-And-Normalize $codexHomePath @("plugins", "cache")
 $pluginCacheRoot = Join-And-Normalize $cacheRoot @($marketplaceName, $PluginName)
 $targetRoot = Join-And-Normalize $pluginCacheRoot @("local")
 
-if (-not $pluginCacheRoot.StartsWith($cacheRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+$cacheRootWithSeparator = $cacheRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+if (-not $pluginCacheRoot.StartsWith($cacheRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "Resolved plugin cache path is outside Codex plugin cache: $pluginCacheRoot"
 }
 

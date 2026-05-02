@@ -56,7 +56,7 @@ describe("ask-pro browser runner", () => {
     const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
     expect(firstCall?.[0]).toMatchObject({
       config: {
-        url: "https://chatgpt.com/?temporary-chat=true",
+        url: "https://chatgpt.com/",
         attachRunning: false,
         thinkingTime: "standard",
         manualLoginProfileDir: expect.stringMatching(
@@ -81,7 +81,7 @@ describe("ask-pro browser runner", () => {
     const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
     expect(firstCall?.[0]).toMatchObject({
       config: {
-        url: "https://chatgpt.com/?temporary-chat=true",
+        url: "https://chatgpt.com/",
         attachRunning: false,
         thinkingTime: "standard",
         manualLoginProfileDir: expect.stringContaining(
@@ -109,6 +109,30 @@ describe("ask-pro browser runner", () => {
         thinkingTime: "extended",
       },
     });
+  });
+
+  test("runs ask-pro sessions in temporary chat when requested", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-temporary-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review in temporary chat.",
+      filePatterns: [],
+      dryRun: false,
+    });
+
+    await runAskProBrowserSession({ cwd, sessionId: session.id, temporary: true });
+
+    const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({
+      config: {
+        url: "https://chatgpt.com/?temporary-chat=true",
+      },
+    });
+    const metadata = JSON.parse(
+      await fs.readFile(path.join(session.dir, "browser.json"), "utf8"),
+    ) as { url?: string };
+    expect(metadata.url).toBe("https://chatgpt.com/?temporary-chat=true");
   });
 
   test("reattaches submitted sessions without resubmitting", async () => {

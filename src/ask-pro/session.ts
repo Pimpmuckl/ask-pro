@@ -233,6 +233,26 @@ export async function updateAskProStatus({
   return next;
 }
 
+export async function updateAskProResumeCommand({
+  cwd,
+  sessionId,
+  resumeCommand,
+}: {
+  cwd: string;
+  sessionId: string;
+  resumeCommand: string;
+}): Promise<AskProStatusFile> {
+  const paths = getAskProSessionPaths(cwd, sessionId);
+  const current = JSON.parse(await fs.readFile(paths.status, "utf8")) as AskProStatusFile;
+  const next: AskProStatusFile = {
+    ...current,
+    resumeCommand,
+    updatedAt: new Date().toISOString(),
+  };
+  await fs.writeFile(paths.status, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  return next;
+}
+
 export async function writeAskProAnswer({
   cwd,
   sessionId,

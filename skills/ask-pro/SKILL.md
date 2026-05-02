@@ -41,6 +41,9 @@ By default, `ask-pro` uses normal Pro thinking effort. Add `--extended` only for
 mega-hard architecture questions, production-risk reviews, or implementation
 plan packages where a multi-hour wait is acceptable.
 
+Temporary Chat is opt-in. Add `--temporary` only when ephemeral ChatGPT history
+matters and weaker recovery after browser/tab loss is acceptable.
+
 Do not set `ASK_PRO_AGENT_ID` for ordinary single-agent use; the shared
 `ask-pro` browser profile is already persistent. Set `ASK_PRO_AGENT_ID` only
 when separate agents truly need isolated browser profiles, such as concurrent
@@ -66,6 +69,7 @@ If useful, ask Pro to create `ask-pro-response.zip` with those files. Always sup
 ```bash
 ask-pro "Review the async billing webhook migration plan and return an implementation plan."
 ask-pro --extended "Produce a deep implementation plan for this risky migration."
+ask-pro --temporary "Review this sensitive migration plan."
 ask-pro --files "src/api/stripe/**" --files "prisma/**" --files "src/lib/billing/**" \
   "Review whether this Stripe webhook flow should use a queue or transactional outbox."
 ask-pro --dry-run "Prepare the Pro handoff but do not open the browser."

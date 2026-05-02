@@ -27,6 +27,7 @@ describe("ask-pro cli", () => {
     ]);
 
     expect(stdout).toContain("--extended");
+    expect(stdout).toContain("--temporary");
     expect(stdout).toContain("multi-hour wait");
   }, 30000);
 
@@ -54,5 +55,29 @@ describe("ask-pro cli", () => {
       "utf8",
     );
     expect(JSON.parse(statusRaw)).toMatchObject({ status: "DRY_RUN_COMPLETE", dryRun: true });
+  }, 30000);
+
+  test("preserves extended and temporary flags in dry-run resume command", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-resume-"));
+    tempDirs.push(cwd);
+
+    const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
+    const tsxLoader = pathToFileURL(
+      path.join(process.cwd(), "node_modules", "tsx", "dist", "esm", "index.mjs"),
+    ).href;
+    await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--dry-run", "--extended", "--temporary", "Review this."],
+      { cwd },
+    );
+
+    const sessions = await fs.readdir(path.join(cwd, ".ask-pro", "sessions"));
+    const statusRaw = await fs.readFile(
+      path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "status.json"),
+      "utf8",
+    );
+    expect(JSON.parse(statusRaw)).toMatchObject({
+      resumeCommand: expect.stringContaining("--extended --temporary --resume"),
+    });
   }, 30000);
 });
