@@ -99,6 +99,8 @@ function buildModelSelectionExpression(
       }
       return value
         .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\\u0300-\\u036f]/g, '')
         .replace(/[^a-z0-9]+/g, ' ')
         .replace(/\\s+/g, ' ')
         .trim();
@@ -429,11 +431,20 @@ function buildModelSelectionExpression(
             setTimeout(attempt, REOPEN_INTERVAL_MS / 2);
             return;
           }
-          // Wait for the top bar label to reflect the requested model; otherwise keep scanning.
+          // Newer ChatGPT builds may keep the composer pill as just "Standard",
+          // "Extended", or "Pro" after selecting a terminal Pro row. Require
+          // selected-state evidence when the composer remains effort-only.
           setTimeout(() => {
-            if (buttonMatchesTarget()) {
+            if (buttonMatchesTarget() || optionIsSelected(match.node)) {
               closeMenu();
               resolve({ status: 'switched', label: getButtonLabel() || match.label });
+              return;
+            }
+            if (performance.now() - start > MAX_WAIT_MS) {
+              resolve({
+                status: 'option-not-found',
+                hint: { temporaryChat: detectTemporaryChat(), availableOptions: collectAvailableOptions() },
+              });
               return;
             }
             attempt();

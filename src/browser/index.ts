@@ -49,6 +49,7 @@ import { CHATGPT_URL, CONVERSATION_TURN_SELECTOR, DEFAULT_MODEL_STRATEGY } from 
 import type { LaunchedChrome } from "chrome-launcher";
 import { BrowserAutomationError } from "./errors.js";
 import { defaultAskProBrowserProfileDir } from "./profilePaths.js";
+import { applyPageLanguageOverrides, seedChromeProfileLanguage } from "./language.js";
 import { alignPromptEchoPair, buildPromptEchoMatcher } from "./reattachHelpers.js";
 import type { ProfileRunLock } from "./profileState.js";
 import {
@@ -296,14 +297,17 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     : null;
   const chrome =
     reusedChrome ??
-    (await launchChrome(
-      {
-        ...config,
-        remoteChrome: config.remoteChrome,
-      },
-      userDataDir,
-      logger,
-    ));
+    (await (async () => {
+      await seedChromeProfileLanguage(userDataDir, config.acceptLanguage, logger);
+      return launchChrome(
+        {
+          ...config,
+          remoteChrome: config.remoteChrome,
+        },
+        userDataDir,
+        logger,
+      );
+    })());
   const chromeHost = (chrome as unknown as { host?: string }).host ?? "127.0.0.1";
   // Persist profile state so future manual-login runs can reuse this Chrome.
   if (manualLogin && chrome.port) {
@@ -361,7 +365,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         );
       } else {
         const strictTabIsolation = Boolean(manualLogin && reusedChrome);
-        const connection = await connectWithNewTab(chrome.port, logger, config.url, chromeHost, {
+        const connection = await connectWithNewTab(chrome.port, logger, "about:blank", chromeHost, {
           fallbackToDefault: !strictTabIsolation,
           retries: strictTabIsolation ? 3 : 0,
           retryDelayMs: 500,
@@ -402,11 +406,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     }
     await Promise.all(domainEnablers);
     if (config.acceptLanguage) {
-      await Network.setExtraHTTPHeaders({
-        headers: {
-          "Accept-Language": config.acceptLanguage,
-        },
-      }).catch(() => undefined);
+      await applyPageLanguageOverrides(client, config.acceptLanguage, logger);
     }
     removeDialogHandler = installJavaScriptDialogAutoDismissal(Page, logger);
     if (!manualLogin) {
@@ -1562,9 +1562,16 @@ async function runRemoteBrowserMode(
         `Attached to existing remote ChatGPT tab ${attached.targetId}${attached.tab.url ? ` (${attached.tab.url})` : ""}`,
       );
     } else {
-      connection = await connectToRemoteChrome(host, port, logger, config.url, browserWSEndpoint, {
-        approvalWaitMs: config.attachRunning && browserWSEndpoint ? 20_000 : undefined,
-      });
+      connection = await connectToRemoteChrome(
+        host,
+        port,
+        logger,
+        "about:blank",
+        browserWSEndpoint,
+        {
+          approvalWaitMs: config.attachRunning && browserWSEndpoint ? 20_000 : undefined,
+        },
+      );
       client = connection.client;
       remoteTargetId = connection.targetId ?? null;
       ownsTarget = true;
@@ -1656,6 +1663,9 @@ async function runRemoteBrowserMode(
       domainEnablers.push(DOM.enable());
     }
     await Promise.all(domainEnablers);
+    if (config.acceptLanguage) {
+      await applyPageLanguageOverrides(client, config.acceptLanguage, logger);
+    }
     removeDialogHandler = installJavaScriptDialogAutoDismissal(Page, logger);
 
     // Skip cookie sync for remote Chrome - it already has cookies

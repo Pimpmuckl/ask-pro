@@ -68,10 +68,10 @@ ask-pro --files "src/**" --files "prisma/**" "<question>"
 Do not expose broad model/preset complexity in the normal path. `--extended` is
 the single explicit long-thinking opt-in for hard architecture, production-risk,
 and implementation-plan package questions where a multi-hour wait is acceptable.
-`--temporary` is the explicit Temporary Chat opt-in. Use it only when ephemeral
-ChatGPT history matters and the caller accepts weaker recovery if the browser
-or tab is closed before harvest. If the current account hides Pro models in
-Temporary Chat, retry the same session with `--no-temporary --resume <id>`.
+Fresh runs try Temporary Chat by default and automatically retry in normal
+ChatGPT if the current account hides Pro models there. `--temporary` makes
+Temporary Chat strict and disables that fallback; `--no-temporary` starts or
+resumes the session in normal ChatGPT.
 
 ## Default behavior
 
@@ -81,13 +81,15 @@ Temporary Chat, retry the same session with `--no-temporary --resume <id>`.
 2. collect focused context
 3. write/accept prompt
 4. open or attach to ChatGPT browser
-5. select best Pro target if possible
-6. select normal Pro thinking effort, or Extended when `--extended` is set
-7. upload context
-8. submit
-9. wait/heartbeat/status
-10. harvest markdown
-11. download generated zip if available
+5. start in Temporary Chat unless `--no-temporary` is set
+6. fall back to normal ChatGPT if the default Temporary Chat path hides Pro
+7. select best Pro target if possible
+8. select normal Pro thinking effort, or Extended when `--extended` is set
+9. upload context
+10. submit
+11. wait/heartbeat/status
+12. harvest markdown
+13. download generated zip if available
 
 ## Output messages
 

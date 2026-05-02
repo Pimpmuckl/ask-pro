@@ -3,7 +3,7 @@ import { getChatGptModelKindTestIdTokens } from "../chatgptModelCatalog.js";
 export function buildModelPickerDomHelpers(): string {
   const kindTokensLiteral = JSON.stringify(getChatGptModelKindTestIdTokens());
   return `
-    const EFFORT_LABELS = new Set(['light', 'standard', 'extended', 'heavy']);
+    const EFFORT_LABELS = new Set(['light', 'standard', 'extended', 'heavy', 'langer']);
     const MODEL_KIND_TEST_ID_TOKENS = ${kindTokensLiteral};
     const findModelButton = () => {
       const candidates = Array.from(document.querySelectorAll(MODEL_BUTTON_SELECTOR));

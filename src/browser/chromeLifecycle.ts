@@ -146,6 +146,7 @@ export async function closeChromeGracefully(
       }
       await waitForChromeExit(chrome.pid, 2500);
       if (!chrome.pid || !isPidAlive(chrome.pid)) {
+        chrome.process?.unref?.();
         return;
       }
       logger?.("Chrome did not exit after Browser.close; terminating process.");
@@ -157,6 +158,7 @@ export async function closeChromeGracefully(
     }
   }
   await chrome.kill();
+  chrome.process?.unref?.();
 }
 
 async function waitForChromeExit(pid: number | undefined, timeoutMs: number): Promise<void> {
@@ -586,7 +588,7 @@ export async function closeTab(
   }
 }
 
-function buildChromeFlags(
+export function buildChromeFlags(
   headless: boolean,
   debugBindAddress?: string | null,
   acceptLanguage = "en-US,en",
@@ -606,7 +608,7 @@ function buildChromeFlags(
     "--metrics-recording-only",
     "--no-first-run",
     "--safebrowsing-disable-auto-update",
-    "--disable-features=TranslateUI,AutomationControlled",
+    "--disable-features=TranslateUI",
     "--mute-audio",
     "--window-size=1280,720",
     `--lang=${primaryLanguage}`,

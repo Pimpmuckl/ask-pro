@@ -1,7 +1,12 @@
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { buildChromeFlags } from "../../src/browser/chromeLifecycle.js";
 import { resolveBrowserConfig } from "../../src/browser/config.js";
 import { CHATGPT_URL } from "../../src/browser/constants.js";
+import {
+  applyPageLanguageOverrides,
+  buildChromeProfileLanguagePatchForTest,
+} from "../../src/browser/language.js";
 import {
   askProAgentIdForManagedBrowserProfileDir,
   askProBrowserProfileDirForAgentId,
@@ -133,5 +138,57 @@ describe("resolveBrowserConfig", () => {
 
     expect(resolved.url).toBe("https://chatgpt.com/?temporary-chat=true");
     expect(resolved.desiredModel).toBe("GPT-5.2 Pro");
+  });
+
+  test("does not pass automation-controlled Chrome feature flags", () => {
+    const flags = buildChromeFlags(false, null, "en-US,en");
+
+    expect(flags).toContain("--disable-features=TranslateUI");
+    expect(flags).toContain("--lang=en-US");
+    expect(flags).toContain("--accept-lang=en-US,en");
+    expect(flags.join(" ")).not.toContain("AutomationControlled");
+    expect(flags.join(" ")).not.toContain("disable-blink-features");
+  });
+
+  test("applies page language overrides through safe CDP domains", async () => {
+    const headers: unknown[] = [];
+    const locales: unknown[] = [];
+    const client = {
+      Network: {
+        setExtraHTTPHeaders: async (payload: unknown) => {
+          headers.push(payload);
+        },
+      },
+      Emulation: {
+        setLocaleOverride: async (payload: unknown) => {
+          locales.push(payload);
+        },
+      },
+    };
+
+    await applyPageLanguageOverrides(client as never, "en-GB,en");
+
+    expect(headers).toEqual([{ headers: { "Accept-Language": "en-GB,en" } }]);
+    expect(locales).toEqual([{ locale: "en_GB" }]);
+  });
+
+  test("skips missing page language override CDP domains", async () => {
+    await expect(applyPageLanguageOverrides({} as never, "en-GB,en")).resolves.toBeUndefined();
+  });
+
+  test("builds Chrome profile language prefs without preserving German-first state", () => {
+    const patch = buildChromeProfileLanguagePatchForTest("en-US,en");
+
+    expect(patch.preferences).toEqual({
+      intl: {
+        accept_languages: "en-US,en",
+        app_locale: "en-US",
+        selected_languages: "en-US,en",
+      },
+      spellcheck: {
+        dictionaries: ["en-US", "en"],
+      },
+    });
+    expect(JSON.stringify(patch)).not.toContain("de-DE");
   });
 });

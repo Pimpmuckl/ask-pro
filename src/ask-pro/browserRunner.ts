@@ -60,8 +60,20 @@ export async function runAskProBrowserSession({
       ? ASK_PRO_TEMPORARY_CHATGPT_URL
       : temporary === false
         ? ASK_PRO_CHATGPT_URL
-        : (metadata?.url ?? ASK_PRO_CHATGPT_URL));
+        : (metadata?.url ?? ASK_PRO_TEMPORARY_CHATGPT_URL));
   await fs.mkdir(browserProfile, { recursive: true });
+  await writeAskProBrowserMetadata({
+    cwd,
+    sessionId,
+    metadata: {
+      schemaVersion: 1,
+      status: "pending",
+      agentId,
+      profileDir: browserProfile,
+      thinkingTime: requestedThinkingTime,
+      url: chatgptUrl,
+    },
+  });
   await updateAskProStatus({ cwd, sessionId, status: "BROWSER_STARTING" });
 
   const logger = buildAskProBrowserLogger(cwd, sessionId, verbose);
@@ -139,6 +151,30 @@ export async function runAskProBrowserSession({
     await updateAskProStatus({ cwd, sessionId, status: "COMPLETED" });
     return result;
   } catch (error) {
+    if (
+      shouldFallbackFromDefaultTemporaryChat(error, {
+        chatgptUrl,
+        chatgptUrlOverride,
+        temporary,
+      })
+    ) {
+      await appendAskProLog(
+        cwd,
+        sessionId,
+        "Temporary Chat did not expose the Pro model; retrying in normal ChatGPT.",
+      );
+      return runAskProBrowserSession({
+        cwd,
+        sessionId,
+        thinkingTime: requestedThinkingTime,
+        temporary: false,
+        chatgptUrl: ASK_PRO_CHATGPT_URL,
+        browserProfileDir: browserProfile,
+        agentId,
+        verbose,
+      });
+    }
+
     if (isAuthGateError(error)) {
       await writeAskProBrowserMetadata({
         cwd,
@@ -197,7 +233,7 @@ export async function resumeAskProBrowserSession({
       ? ASK_PRO_TEMPORARY_CHATGPT_URL
       : temporary === false
         ? ASK_PRO_CHATGPT_URL
-        : (metadata.url ?? ASK_PRO_CHATGPT_URL);
+        : (metadata.url ?? ASK_PRO_TEMPORARY_CHATGPT_URL);
   const fallbackProfile = resolveResumeBrowserProfile(metadata);
   const attachRunning = !metadata.agentId;
   if (temporary === false && isTemporaryAskProUrl(metadata.url ?? "")) {
@@ -250,6 +286,7 @@ export async function resumeAskProBrowserSession({
         manualLoginProfileDir: fallbackProfile,
         timeoutMs: DEFAULT_TIMEOUT_MS,
         inputTimeoutMs: 90_000,
+        acceptLanguage: "en-US,en",
         url: chatgptUrl,
         thinkingTime: thinkingTime ?? metadata.thinkingTime,
       },
@@ -303,6 +340,33 @@ function isTemporaryAskProUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function shouldFallbackFromDefaultTemporaryChat(
+  error: unknown,
+  options: {
+    chatgptUrl: string;
+    chatgptUrlOverride?: string;
+    temporary?: boolean;
+  },
+): boolean {
+  return (
+    options.temporary === undefined &&
+    options.chatgptUrlOverride === undefined &&
+    isTemporaryAskProUrl(options.chatgptUrl) &&
+    isTemporaryProUnavailableError(error)
+  );
+}
+
+function isTemporaryProUnavailableError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    (message.includes("unable to find model option matching") &&
+      message.includes("temporary chat mode is active") &&
+      message.includes("pro")) ||
+    message.includes("unable to locate the chatgpt model selector button")
+  );
 }
 
 async function ensureResponseZipManifest(sessionDir: string): Promise<void> {

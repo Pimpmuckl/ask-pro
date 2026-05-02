@@ -27,6 +27,10 @@ class FakeElement extends EventTarget {
     return this.attrs.get(name) ?? null;
   }
 
+  setAttribute(name: string, value: string) {
+    this.attrs.set(name, value);
+  }
+
   getBoundingClientRect() {
     return { height: 32, width: 160 };
   }
@@ -74,6 +78,10 @@ class FakeElement extends EventTarget {
           (selector.includes("data-model-picker-thinking-effort-action") &&
             child.getAttribute("data-model-picker-thinking-effort-action") === "true") ||
           (selector.includes("model-switcher-") && testId.includes("model-switcher-")) ||
+          (selector.includes('role="button"') && role === "button") ||
+          (selector.includes('role="radio"') && role === "radio") ||
+          (selector.includes('role="combobox"') && role === "combobox") ||
+          (selector.includes('role="option"') && role === "option") ||
           (selector.includes("menuitem") && role?.includes("menuitem"))
         ) {
           results.push(child);
@@ -100,10 +108,13 @@ class FakeDocument extends EventTarget {
     private readonly modelButton: FakeElement,
     private readonly trailingButtons: FakeElement[],
     menusById: Record<string, FakeElement>,
+    readonly roots: FakeElement[] = [],
+    readonly menus: FakeElement[] = [],
   ) {
     super();
     for (const [id, element] of Object.entries(menusById)) {
       this.byId.set(id, element);
+      this.menus.push(element);
     }
   }
 
@@ -112,11 +123,39 @@ class FakeDocument extends EventTarget {
   }
 
   querySelectorAll(selector: string) {
+    const fromRoots = (roots: FakeElement[]) => [
+      ...roots,
+      ...roots.flatMap((root) => root.querySelectorAll(selector)),
+    ];
     if (selector.includes('button.__composer-pill[aria-haspopup="menu"]')) {
       return [this.modelButton];
     }
     if (selector.includes("data-model-picker-thinking-effort-action")) {
-      return this.trailingButtons;
+      const extra = selector.includes("model-configure-modal") ? fromRoots(this.roots) : [];
+      return [...this.trailingButtons, ...extra];
+    }
+    if (selector.includes('role="dialog"') || selector.includes('data-state="open"')) {
+      return this.roots.filter(
+        (node) =>
+          node.getAttribute("role") === "dialog" || node.getAttribute("data-state") === "open",
+      );
+    }
+    if (
+      selector.includes('role="menu"') ||
+      selector.includes("data-radix-collection-root") ||
+      selector.includes('role="listbox"') ||
+      selector.includes('role="group"')
+    ) {
+      return this.menus;
+    }
+    if (
+      selector.includes("model-configure-modal") ||
+      selector.includes('role="menuitem"') ||
+      selector.includes('role="option"') ||
+      selector.includes('role="radio"') ||
+      selector.includes("button")
+    ) {
+      return fromRoots([...this.roots, ...this.menus]);
     }
     return [];
   }
@@ -193,6 +232,115 @@ describe("browser thinking-time selection expression", () => {
     }
   });
 
+  it("selects Extended through Configure / Pro thinking effort", async () => {
+    let configureClicked = false;
+    let proClicked = false;
+    let effortClicked = false;
+    let extendedClicked = false;
+    const modelButton = new FakeElement("Standard", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const configure = new FakeElement(
+      "Configure...",
+      { "data-testid": "model-configure-modal", role: "menuitem" },
+      [],
+      () => {
+        configureClicked = true;
+        document.roots.push(dialog);
+      },
+    );
+    const proRow = new FakeElement(
+      "Pro",
+      {
+        "aria-checked": "false",
+        "data-testid": "model-switcher-gpt-5-5-pro",
+        role: "option",
+      },
+      [],
+      () => {
+        proClicked = true;
+        proRow.setAttribute("aria-checked", "true");
+      },
+    );
+    const extendedOption = new FakeElement("Extended", { role: "option" }, [], () => {
+      extendedClicked = true;
+    });
+    const effortMenu = new FakeElement("Standard Extended", { role: "listbox" }, [extendedOption]);
+    const effortControl = new FakeElement(
+      "Standard",
+      { "aria-label": "Pro thinking effort", role: "button" },
+      [],
+      () => {
+        effortClicked = true;
+        document.menus.push(effortMenu);
+      },
+    );
+    const dialog = new FakeElement("Models Pro thinking effort Standard", { role: "dialog" }, [
+      proRow,
+      effortControl,
+    ]);
+    const document = new FakeDocument(modelButton, [], {}, [configure]);
+
+    const result = await runThinkingTimeExpression(document, "extended");
+
+    expect(result).toEqual({ status: "switched", label: "Extended" });
+    expect(configureClicked).toBe(true);
+    expect(proClicked).toBe(true);
+    expect(effortClicked).toBe(true);
+    expect(extendedClicked).toBe(true);
+  });
+
+  it("selects Länger through German Configure / Denkaufwand Pro", async () => {
+    let configureClicked = false;
+    let effortClicked = false;
+    let extendedClicked = false;
+    const modelButton = new FakeElement("Länger Pro", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const configure = new FakeElement(
+      "Konfigurieren...",
+      { "data-testid": "model-configure-modal", role: "menuitem" },
+      [],
+      () => {
+        configureClicked = true;
+        document.roots.push(dialog);
+      },
+    );
+    const proRow = new FakeElement("Pro 5.5 Intelligenz auf höchstem Niveau", {
+      "aria-checked": "true",
+      "data-testid": "model-switcher-gpt-5-5-pro",
+      role: "radio",
+    });
+    const longerOption = new FakeElement("Länger", { role: "option" }, [], () => {
+      extendedClicked = true;
+    });
+    const effortMenu = new FakeElement("Standard Länger", { role: "listbox" }, [longerOption]);
+    const effortControl = new FakeElement(
+      "Länger",
+      { "aria-label": "Denkaufwand Pro", role: "combobox" },
+      [],
+      () => {
+        effortClicked = true;
+        document.menus.push(effortMenu);
+      },
+    );
+    const dialog = new FakeElement(
+      "Intelligenz Modell Pro 5.5 Denkaufwand Pro Länger",
+      { role: "dialog" },
+      [proRow, effortControl],
+    );
+    const document = new FakeDocument(modelButton, [], {}, [configure]);
+
+    const result = await runThinkingTimeExpression(document, "extended");
+
+    expect(result).toEqual({ status: "already-selected", label: "Länger" });
+    expect(configureClicked).toBe(true);
+    expect(effortClicked).toBe(false);
+    expect(extendedClicked).toBe(false);
+  });
+
   it("opens the effort menu for the currently selected model row", async () => {
     let thinkingClicked = false;
     let proClicked = false;
@@ -259,6 +407,83 @@ describe("browser thinking-time selection expression", () => {
     expect(result).toEqual({ status: "switched", label: "Extended" });
     expect(thinkingClicked).toBe(false);
     expect(proClicked).toBe(true);
+    expect(extendedClicked).toBe(true);
+  });
+
+  it("opens the selected Pro trailing effort control when the composer pill is effort-only", async () => {
+    let proClicked = false;
+    let extendedClicked = false;
+    const modelButton = new FakeElement("Standard", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const proTrailing = new FakeElement(
+      "",
+      {
+        "aria-controls": "pro-effort",
+        "data-model-picker-thinking-effort-action": "true",
+        "data-testid": "model-switcher-gpt-5-5-pro-thinking-effort",
+        role: "menuitem",
+      },
+      [],
+      () => {
+        proClicked = true;
+      },
+    );
+    new FakeElement("Pro Standard", { class: "group/model-picker-thinking-effort-row relative" }, [
+      new FakeElement("Pro Standard", {
+        "aria-checked": "true",
+        "data-testid": "model-switcher-gpt-5-5-pro",
+        role: "menuitemradio",
+      }),
+      proTrailing,
+    ]);
+    const extendedOption = new FakeElement("Extended", { role: "menuitemradio" }, [], () => {
+      extendedClicked = true;
+    });
+    const document = new FakeDocument(modelButton, [proTrailing], {
+      "pro-effort": new FakeElement("Standard Extended", { role: "menu" }, [extendedOption]),
+    });
+
+    const result = await runThinkingTimeExpression(document, "extended");
+
+    expect(result).toEqual({ status: "switched", label: "Extended" });
+    expect(proClicked).toBe(true);
+    expect(extendedClicked).toBe(true);
+  });
+
+  it("resolves a trailing effort listbox without aria-controls", async () => {
+    let extendedClicked = false;
+    const modelButton = new FakeElement("Standard", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const proTrailing = new FakeElement(
+      "",
+      {
+        "data-model-picker-thinking-effort-action": "true",
+        "data-testid": "model-switcher-gpt-5-5-pro-thinking-effort",
+        role: "menuitem",
+      },
+      [],
+    );
+    new FakeElement("Pro Standard", { class: "group/model-picker-thinking-effort-row relative" }, [
+      new FakeElement("Pro Standard", {
+        "aria-checked": "true",
+        "data-testid": "model-switcher-gpt-5-5-pro",
+        role: "menuitemradio",
+      }),
+      proTrailing,
+    ]);
+    const extendedOption = new FakeElement("Extended", { role: "option" }, [], () => {
+      extendedClicked = true;
+    });
+    const listbox = new FakeElement("Standard Extended", { role: "listbox" }, [extendedOption]);
+    const document = new FakeDocument(modelButton, [proTrailing], {}, [], [listbox]);
+
+    const result = await runThinkingTimeExpression(document, "extended");
+
+    expect(result).toEqual({ status: "switched", label: "Extended" });
     expect(extendedClicked).toBe(true);
   });
 
