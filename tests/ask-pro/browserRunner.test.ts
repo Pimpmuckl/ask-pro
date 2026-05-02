@@ -259,6 +259,72 @@ describe("ask-pro browser runner", () => {
     });
   });
 
+  test("reattach without runtime metadata fails closed unless auth was pending", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-no-runtime-waiting-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Resume a waiting session without runtime metadata.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        url: "https://chatgpt.com/",
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAITING" });
+
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      /no saved browser runtime metadata/i,
+    );
+    expect(runBrowserModeMock).not.toHaveBeenCalled();
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
+  });
+
+  test("no-temporary resume opens a normal chat retry instead of reattaching temporary chat", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-no-temporary-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Retry outside temporary chat.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        url: "https://chatgpt.com/?temporary-chat=true",
+        runtime: {
+          chromePort: 9224,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/?temporary-chat=true",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAITING" });
+
+    await resumeAskProBrowserSession({ cwd, sessionId: session.id, temporary: false });
+
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
+    expect(runBrowserModeMock).toHaveBeenCalledTimes(1);
+    const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({
+      config: {
+        url: "https://chatgpt.com/",
+      },
+    });
+  });
+
   test("reattach without runtime metadata reuses the stored agent profile", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-no-runtime-agent-"));
     tempDirs.push(cwd);

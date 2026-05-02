@@ -185,10 +185,34 @@ export async function resumeAskProBrowserSession({
   const logger = buildAskProBrowserLogger(cwd, sessionId, verbose);
   const metadata = await readBrowserMetadata(paths.browser);
   const chatgptUrl =
-    temporary === true ? ASK_PRO_TEMPORARY_CHATGPT_URL : (metadata.url ?? ASK_PRO_CHATGPT_URL);
+    temporary === true
+      ? ASK_PRO_TEMPORARY_CHATGPT_URL
+      : temporary === false
+        ? ASK_PRO_CHATGPT_URL
+        : (metadata.url ?? ASK_PRO_CHATGPT_URL);
   const fallbackProfile = resolveResumeBrowserProfile(metadata);
   const attachRunning = !metadata.agentId;
+  if (temporary === false && isTemporaryAskProUrl(metadata.url ?? "")) {
+    await appendAskProLog(
+      cwd,
+      sessionId,
+      "Retrying Temporary Chat session in normal ChatGPT; opening managed browser submission.",
+    );
+    await runAskProBrowserSession({
+      cwd,
+      sessionId,
+      thinkingTime: thinkingTime ?? metadata.thinkingTime,
+      temporary: false,
+      browserProfileDir: fallbackProfile,
+      agentId: metadata.agentId ?? null,
+      verbose,
+    });
+    return;
+  }
   if (!metadata.runtime) {
+    if (metadata.status !== "needs_user_auth") {
+      throw new Error(`session ${sessionId} has no saved browser runtime metadata`);
+    }
     await appendAskProLog(
       cwd,
       sessionId,
