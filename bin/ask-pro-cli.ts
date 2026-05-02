@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import "dotenv/config";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { Command, Option } from "commander";
 import {
   createAskProSession,
+  getAskProSessionPaths,
   type AskProStatusFile,
   readAskProAnswer,
   readAskProStatus,
@@ -72,13 +74,16 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
   const cwd = resolveProjectCwd(options);
   if (options.status !== undefined) {
     const { status } = await readAskProStatus({ cwd, sessionId: optionSessionId(options.status) });
-    printStatusRecord(status);
+    printStatusRecord(status, {
+      profile: await readStatusBrowserProfile(cwd, status),
+      ...answerExtraForStatus(status, status.sessionId),
+    });
     return;
   }
   if (options.harvest !== undefined) {
     const result = await readAskProAnswer({ cwd, sessionId: optionSessionId(options.harvest) });
+    await writeStdout(result.answer);
     await updateAskProStatus({ cwd, sessionId: result.sessionId, status: "HARVESTED" });
-    process.stdout.write(result.answer);
     return;
   }
   if (options.copy !== undefined) {
@@ -86,7 +91,12 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
       cwd,
       sessionId: optionSessionId(options.copy),
     });
-    printStatusRecord(status, { answer: path.join(dir, "ANSWER.md") });
+    writeToon("ask_pro", {
+      session: status.sessionId,
+      state: normalizeState(status.status),
+      target: path.join(dir, "ANSWER.md"),
+      action: "copy_target",
+    });
     return;
   }
   if (options.resume !== undefined) {
@@ -154,7 +164,7 @@ async function submitOrResumeBrowserSession(
 ): Promise<void> {
   const { status } = await readAskProStatus({ cwd, sessionId });
   if (status.status === "COMPLETED" || status.status === "HARVESTED") {
-    printStatusRecord(status, { answer: answerPath(sessionId) });
+    printStatusRecord(status, answerExtraForStatus(status, sessionId));
     return;
   }
   if (
@@ -179,7 +189,7 @@ async function submitOrResumeBrowserSession(
       throw error;
     }
     const { status: completed } = await readAskProStatus({ cwd, sessionId });
-    printStatusRecord(completed, { answer: answerPath(sessionId) });
+    printStatusRecord(completed, answerExtraForStatus(completed, sessionId));
     return;
   }
   try {
@@ -191,7 +201,7 @@ async function submitOrResumeBrowserSession(
       verbose: options.verbose,
     });
     const { status: completed } = await readAskProStatus({ cwd, sessionId });
-    printStatusRecord(completed, { answer: answerPath(sessionId) });
+    printStatusRecord(completed, answerExtraForStatus(completed, sessionId));
   } catch (error) {
     if (error instanceof AskProNeedsAuthError) {
       printAuthInstructions(sessionId, options, cwd, error);
@@ -304,6 +314,18 @@ function writeToon(name: string, fields: AskProToonFields): void {
   process.stdout.write(`${renderToonRecord(name, fields)}\n`);
 }
 
+async function writeStdout(value: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    process.stdout.write(value, (error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
 function normalizeState(status: AskProStatusFile["status"]): string {
   if (status === "NEEDS_USER_AUTH") return "needs_auth";
   return status.toLowerCase();
@@ -359,11 +381,34 @@ function shouldPrintResume(status: AskProStatusFile): boolean {
 }
 
 function shouldPrintHarvest(status: AskProStatusFile): boolean {
-  return ["COMPLETED", "READY_TO_HARVEST", "HARVESTED"].includes(status.status);
+  return ["COMPLETED", "READY_TO_HARVEST"].includes(status.status);
 }
 
 function answerPath(sessionId: string): string {
   return `.ask-pro/sessions/${sessionId}/ANSWER.md`;
+}
+
+function answerExtraForStatus(status: AskProStatusFile, sessionId: string): AskProToonFields {
+  return ["COMPLETED", "HARVESTED"].includes(status.status)
+    ? { answer: answerPath(sessionId) }
+    : {};
+}
+
+async function readStatusBrowserProfile(
+  cwd: string,
+  status: AskProStatusFile,
+): Promise<string | undefined> {
+  if (status.status !== "NEEDS_USER_AUTH") {
+    return undefined;
+  }
+  try {
+    const paths = getAskProSessionPaths(cwd, status.sessionId);
+    const raw = await fs.readFile(paths.browser, "utf8");
+    const metadata = JSON.parse(raw) as { profileDir?: unknown };
+    return typeof metadata.profileDir === "string" ? collapseHome(metadata.profileDir) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function collapseHome(filePath: string): string {

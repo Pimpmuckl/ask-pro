@@ -145,6 +145,11 @@ describe("ask-pro cli", () => {
     const statusPath = path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "status.json");
     const status = JSON.parse(await fs.readFile(statusPath, "utf8"));
     await fs.writeFile(
+      path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "browser.json"),
+      `${JSON.stringify({ schemaVersion: 1, status: "needs_user_auth", profileDir: "C:/AskPro/Profile" }, null, 2)}\n`,
+      "utf8",
+    );
+    await fs.writeFile(
       statusPath,
       `${JSON.stringify(
         { ...status, status: "NEEDS_USER_AUTH", reason: "login_page_detected" },
@@ -163,6 +168,7 @@ describe("ask-pro cli", () => {
     expect(stderr).toBe("");
     expect(stdout).toContain("  state: needs_auth\n");
     expect(stdout).toContain("  action: human_login_then_resume\n");
+    expect(stdout).toContain('  profile: "C:/AskPro/Profile"\n');
     expect(stdout).toContain('  resume: "ask-pro --resume ');
   }, 30000);
 
@@ -200,6 +206,7 @@ describe("ask-pro cli", () => {
     expect(stdout).toContain("  state: waiting\n");
     expect(stdout).toContain("  action: wait\n");
     expect(stdout).toContain('  resume: "ask-pro --resume ');
+    expect(stdout).not.toContain("  answer: ");
   }, 30000);
 
   test("prints copy target as compact TOON", async () => {
@@ -227,9 +234,39 @@ describe("ask-pro cli", () => {
     expect(stderr).toBe("");
     expect(stdout).toMatch(/^ask_pro\n/);
     expect(stdout).toContain("  state: dry_run_complete\n");
-    expect(stdout).toContain("  action: resume\n");
-    expect(stdout).toContain('  resume: "ask-pro --resume ');
+    expect(stdout).toContain("  action: copy_target\n");
+    expect(stdout).toContain("  target: ");
     expect(stdout).toContain("ANSWER.md");
+  }, 30000);
+
+  test("does not print harvest command after session is harvested", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-harvested-status-"));
+    tempDirs.push(cwd);
+
+    const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
+    const tsxLoader = pathToFileURL(
+      path.join(process.cwd(), "node_modules", "tsx", "dist", "esm", "index.mjs"),
+    ).href;
+    await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--dry-run", "Review this."],
+      {
+        cwd,
+      },
+    );
+    await execFileAsync(process.execPath, ["--import", tsxLoader, cli, "--harvest"], { cwd });
+
+    const { stdout, stderr } = await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--status"],
+      { cwd },
+    );
+
+    expect(stderr).toBe("");
+    expect(stdout).toContain("  state: harvested\n");
+    expect(stdout).toContain("  action: read_answer\n");
+    expect(stdout).toContain("  answer: ");
+    expect(stdout).not.toContain("  harvest: ");
   }, 30000);
 
   test("prints errors as structured stdout", async () => {
