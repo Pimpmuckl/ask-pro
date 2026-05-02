@@ -10,6 +10,7 @@ import {
   resolveAskProAgentId,
 } from "../browser/profilePaths.js";
 import { runBrowserMode, type BrowserRunResult } from "../browserMode.js";
+import { closeTab } from "../browser/chromeLifecycle.js";
 import { resumeBrowserSession } from "../browser/reattach.js";
 import type { BrowserLogger, ThinkingTimeLevel } from "../browser/types.js";
 import {
@@ -71,6 +72,7 @@ export async function runAskProBrowserSession({
       agentId,
       profileDir: browserProfile,
       thinkingTime: requestedThinkingTime,
+      temporary,
       url: chatgptUrl,
     },
   });
@@ -117,6 +119,7 @@ export async function runAskProBrowserSession({
             agentId,
             profileDir: browserProfile,
             thinkingTime: requestedThinkingTime,
+            temporary,
             url: chatgptUrl,
             runtime,
           },
@@ -143,6 +146,7 @@ export async function runAskProBrowserSession({
         agentId,
         profileDir: browserProfile,
         thinkingTime: requestedThinkingTime,
+        temporary,
         url: chatgptUrl,
         runtime: browserResultToRuntime(result),
       },
@@ -163,6 +167,7 @@ export async function runAskProBrowserSession({
         sessionId,
         "Temporary Chat did not expose the Pro model; retrying in normal ChatGPT.",
       );
+      await closeFallbackTemporaryTab(cwd, sessionId, logger);
       return runAskProBrowserSession({
         cwd,
         sessionId,
@@ -185,6 +190,7 @@ export async function runAskProBrowserSession({
           agentId,
           profileDir: browserProfile,
           thinkingTime: requestedThinkingTime,
+          temporary,
           url: chatgptUrl,
           reason: classifyBrowserError(error),
         },
@@ -228,15 +234,16 @@ export async function resumeAskProBrowserSession({
   const prompt = await readAskProPrompt({ cwd, sessionId });
   const logger = buildAskProBrowserLogger(cwd, sessionId, verbose);
   const metadata = await readBrowserMetadata(paths.browser);
+  const effectiveTemporary = temporary ?? metadata.temporary;
   const chatgptUrl =
-    temporary === true
+    effectiveTemporary === true
       ? ASK_PRO_TEMPORARY_CHATGPT_URL
-      : temporary === false
+      : effectiveTemporary === false
         ? ASK_PRO_CHATGPT_URL
         : (metadata.url ?? ASK_PRO_TEMPORARY_CHATGPT_URL);
   const fallbackProfile = resolveResumeBrowserProfile(metadata);
   const attachRunning = !metadata.agentId;
-  if (temporary === false && isTemporaryAskProUrl(metadata.url ?? "")) {
+  if (effectiveTemporary === false && isTemporaryAskProUrl(metadata.url ?? "")) {
     await appendAskProLog(
       cwd,
       sessionId,
@@ -265,12 +272,13 @@ export async function resumeAskProBrowserSession({
     );
     const storedUrlIsDefaultTemporary = chatgptUrl === ASK_PRO_TEMPORARY_CHATGPT_URL;
     const shouldPreserveUrl =
-      temporary !== undefined || (metadata.url !== undefined && !storedUrlIsDefaultTemporary);
+      effectiveTemporary !== undefined ||
+      (metadata.url !== undefined && !storedUrlIsDefaultTemporary);
     await runAskProBrowserSession({
       cwd,
       sessionId,
       thinkingTime: thinkingTime ?? metadata.thinkingTime,
-      temporary,
+      temporary: effectiveTemporary,
       chatgptUrl: shouldPreserveUrl ? chatgptUrl : undefined,
       browserProfileDir: fallbackProfile,
       agentId: metadata.agentId ?? null,
@@ -310,6 +318,7 @@ export async function resumeAskProBrowserSession({
         status: "completed",
         profileDir: fallbackProfile,
         thinkingTime: thinkingTime ?? metadata.thinkingTime,
+        temporary: effectiveTemporary,
         url: chatgptUrl,
       },
     });
@@ -343,6 +352,25 @@ function isTemporaryAskProUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+async function closeFallbackTemporaryTab(
+  cwd: string,
+  sessionId: string,
+  logger: BrowserLogger,
+): Promise<void> {
+  const paths = getAskProSessionPaths(cwd, sessionId);
+  const metadata = await readBrowserMetadata(paths.browser).catch(() => null);
+  const runtime = metadata?.runtime;
+  if (!runtime?.chromePort || !runtime.chromeTargetId) {
+    return;
+  }
+  await closeTab(
+    runtime.chromePort,
+    runtime.chromeTargetId,
+    logger,
+    runtime.chromeHost ?? "127.0.0.1",
+  ).catch(() => undefined);
 }
 
 function shouldFallbackFromDefaultTemporaryChat(
@@ -516,6 +544,7 @@ interface AskProBrowserMetadata {
   profileDir?: string;
   agentId?: string | null;
   thinkingTime?: ThinkingTimeLevel;
+  temporary?: boolean;
   url?: string;
   runtime?: {
     chromePid?: number;

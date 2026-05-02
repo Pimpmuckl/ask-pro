@@ -19,12 +19,16 @@ const runBrowserModeMock = vi.fn(async () => ({
   answerMarkdown: "# Agent\n",
   browserTransport: "launched",
 }));
+const closeTabMock = vi.fn(async () => undefined);
 
 vi.mock("../../src/browser/reattach.js", () => ({
   resumeBrowserSession: resumeBrowserSessionMock,
 }));
 vi.mock("../../src/browserMode.js", () => ({
   runBrowserMode: runBrowserModeMock,
+}));
+vi.mock("../../src/browser/chromeLifecycle.js", () => ({
+  closeTab: closeTabMock,
 }));
 
 const { resumeAskProBrowserSession, runAskProBrowserSession } =
@@ -35,6 +39,7 @@ const tempDirs: string[] = [];
 afterEach(async () => {
   resumeBrowserSessionMock.mockClear();
   runBrowserModeMock.mockClear();
+  closeTabMock.mockClear();
   vi.unstubAllEnvs();
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
@@ -173,6 +178,43 @@ describe("ask-pro browser runner", () => {
     });
     const log = await fs.readFile(path.join(session.dir, "log.txt"), "utf8");
     expect(log).toContain("Temporary Chat did not expose the Pro model");
+  });
+
+  test("closes the failed temporary chat tab before falling back", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-temporary-close-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review with temporary cleanup.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    runBrowserModeMock
+      .mockImplementationOnce(async (...args: unknown[]) => {
+        const options = args[0] as { runtimeHintCb?: (runtime: unknown) => void };
+        await options.runtimeHintCb?.({
+          chromePort: 9222,
+          chromeHost: "127.0.0.1",
+          chromeTargetId: "temp-target",
+        });
+        throw new Error(
+          'Unable to find model option matching "GPT-5.5 Pro" in the model switcher. Temporary Chat mode is active; verify the model picker exposes Pro in the current account/UI.',
+        );
+      })
+      .mockResolvedValueOnce({
+        answerText: "agent answer",
+        answerMarkdown: "# Agent\n",
+        browserTransport: "launched",
+      });
+
+    await runAskProBrowserSession({ cwd, sessionId: session.id });
+
+    expect(closeTabMock).toHaveBeenCalledWith(
+      9222,
+      "temp-target",
+      expect.any(Function),
+      "127.0.0.1",
+    );
   });
 
   test("falls back to normal ChatGPT when default Temporary Chat lacks the model picker", async () => {
@@ -363,6 +405,40 @@ describe("ask-pro browser runner", () => {
         url: "https://chatgpt.com/",
       },
     });
+  });
+
+  test("auth relaunch preserves explicit temporary strictness from metadata", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-strict-temp-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Resume strict temporary chat.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "needs_user_auth",
+        temporary: true,
+        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        url: "https://chatgpt.com/?temporary-chat=true",
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "NEEDS_USER_AUTH" });
+    runBrowserModeMock.mockRejectedValueOnce(
+      new Error(
+        'Unable to find model option matching "GPT-5.5 Pro" in the model switcher. Temporary Chat mode is active; verify the model picker exposes Pro in the current account/UI.',
+      ),
+    );
+
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      /temporary chat mode is active/i,
+    );
+
+    expect(runBrowserModeMock).toHaveBeenCalledTimes(1);
   });
 
   test("fresh retry honors no-temporary over a stored temporary URL", async () => {
