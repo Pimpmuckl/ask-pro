@@ -5,6 +5,10 @@
 ### Changed
 
 - Rename the package and binary surface to `ask_pro` / `ask-pro`.
+- Change normal CLI stdout to compact TOON-style agent telemetry and keep
+  browser progress on stderr/session logs.
+- Keep `ask-pro --harvest` as raw `ANSWER.md` output so agents can pipe or read
+  the Pro answer without a metadata wrapper.
 - Keep npm publishing out of scope until a human explicitly approves release.
 - Narrow the product to browser-backed ChatGPT Pro escalation with project-local
   `.ask-pro/` sessions and a persistent

@@ -162,8 +162,9 @@ On the first browser run, ChatGPT may ask you to sign in, complete MFA, or clear
 a browser challenge. Authentication is human-controlled: `ask-pro` never asks
 for passwords, MFA codes, recovery codes, cookies, or raw auth tokens.
 
-If auth is needed, the run records the session and prints a resume command. Log
-in in the opened browser, then resume:
+If auth is needed, the run records the session and prints a compact
+agent-readable state with a resume command. Log in in the opened browser, then
+resume:
 
 ```bash
 ask-pro --resume <session-id>
@@ -231,6 +232,42 @@ ask-pro --files src/ask-pro/session.ts --files tests/ask-pro "Find missing tests
 ask-pro --status
 ask-pro --harvest 2026-05-01T165438-return-exactly-ask-pro-browser-login-ready
 ```
+
+## Agent Output
+
+`ask-pro` is an agent-facing CLI. Normal stdout is compact TOON-style telemetry;
+browser progress and diagnostics go to stderr/session logs. `--harvest` is the
+exception: it prints the raw `ANSWER.md` body so agents can pipe or read the Pro
+answer without metadata noise.
+
+Example dry-run/status output:
+
+```toon
+ask_pro
+  session: 2026-05-02T192156-review-this
+  state: dry_run_complete
+  thinking: standard
+  temporary: default
+  action: resume
+  resume: "ask-pro --resume 2026-05-02T192156-review-this"
+  files: 1
+```
+
+Example auth gate:
+
+```toon
+ask_pro
+  session: 2026-05-02T192156-review-this
+  state: needs_auth
+  reason: login_page_detected
+  profile: ~/.agents/skills/ask-pro/browser-profile
+  action: human_login_then_resume
+  resume: "ask-pro --resume 2026-05-02T192156-review-this"
+```
+
+Generated response zips are still harvested into session files when ChatGPT
+provides them. If no zip is available, use `ask-pro --harvest <session-id>` to
+print the markdown fallback answer.
 
 ## Sessions
 

@@ -91,20 +91,50 @@ resumes the session in normal ChatGPT.
 12. harvest markdown
 13. download generated zip if available
 
-## Output messages
+## Output contract
 
-Good status language:
+`ask-pro` is agent-only. Normal stdout is compact TOON-style telemetry. Browser
+progress, waiting heartbeats, and verbose diagnostics go to stderr and the
+session log. `--harvest` prints raw `ANSWER.md` so the Pro answer can be piped
+or read without a wrapper.
 
-```text
-$ask-pro session created: .ask-pro/sessions/2026-05-01-billing-webhook
-ChatGPT auth required. Log in in the opened browser, then run: ask-pro --resume 2026-05-01-billing-webhook
-Submitted to ChatGPT Pro. Waiting with 180m budget.
-Pro response harvested. Generated zip extracted to pro-output/.
+Status/create/auth/error records should stay tiny and action-oriented:
+
+```toon
+ask_pro
+  session: 2026-05-01-billing-webhook
+  state: waiting
+  thinking: standard
+  temporary: default
+  action: wait
+  resume: "ask-pro --resume 2026-05-01-billing-webhook"
 ```
 
-Bad status language:
+Auth-needed records:
+
+```toon
+ask_pro
+  session: 2026-05-01-billing-webhook
+  state: needs_auth
+  reason: login_page_detected
+  profile: ~/.agents/skills/ask-pro/browser-profile
+  action: human_login_then_resume
+  resume: "ask-pro --resume 2026-05-01-billing-webhook"
+```
+
+Errors are structured on stdout with a non-zero exit:
+
+```toon
+ask_pro_error
+  code: browser_failed
+  message: "Unable to locate the ChatGPT model selector button"
+  action: inspect_session
+```
+
+Do not print human prose such as:
 
 ```text
 Asking the smart guy...
 Consulting the guru...
+Opening ChatGPT Pro. Waiting...
 ```

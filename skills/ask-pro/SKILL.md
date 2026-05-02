@@ -34,7 +34,8 @@ When invoked:
    If `ask-pro` is not on `PATH`, run it from the source checkout instead:
    `npm exec --yes pnpm@10.33.2 -- --dir C:/Code/ask-pro start -- --files "<glob>" "<prompt>"`.
 6. If auth is required, stop and ask the human to log in in the opened browser.
-7. Resume or harvest as instructed by the CLI.
+7. Read the CLI's compact `ask_pro` record and run the emitted `resume` or
+   `harvest` command when that is the next action.
 8. Treat the answer as advisory; turn it into your own plan before editing code.
 
 By default, `ask-pro` uses normal Pro thinking effort. Add `--extended` only for
@@ -65,6 +66,16 @@ Ask Pro to be direct, practical, and biased toward boring reliable choices. For 
 - `FILES_TO_EDIT.md`
 
 If useful, ask Pro to create `ask-pro-response.zip` with those files. Always support markdown fallback.
+
+## Output
+
+Normal `ask-pro` stdout is compact TOON-style telemetry. Use `state`, `action`,
+`resume`, and `harvest` to decide the next command. Browser progress may appear
+on stderr and can be ignored unless diagnosing a stuck run.
+
+`ask-pro --harvest <session-id>` prints the raw markdown answer. If ChatGPT also
+provided `ask-pro-response.zip`, files are extracted under the session's
+`pro-output/` directory and described in `PRO_OUTPUT_MANIFEST.json`.
 
 ## Commands
 

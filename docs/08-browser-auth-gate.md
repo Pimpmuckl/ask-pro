@@ -32,28 +32,20 @@ Return `NEEDS_USER_AUTH` when:
 - user account chooser is visible
 - browser asks for permission that requires human action
 
-## Human-facing message
+## Agent-facing result
 
-```text
-ChatGPT authentication is required.
-I opened a browser window. Please log into ChatGPT there.
-Do not paste credentials into this terminal or agent chat.
-When the message composer is visible, run:
-
-ask-pro --resume <session-id>
+```toon
+ask_pro
+  session: 2026-05-01-billing-webhook
+  state: needs_auth
+  reason: login_page_detected
+  profile: ~/.agents/skills/ask-pro/browser-profile
+  action: human_login_then_resume
+  resume: "ask-pro --resume 2026-05-01-billing-webhook"
 ```
 
-## Machine-readable result
-
-```json
-{
-  "status": "NEEDS_USER_AUTH",
-  "sessionId": "2026-05-01-billing-webhook",
-  "reason": "login_page_detected",
-  "resumeCommand": "ask-pro --resume 2026-05-01-billing-webhook",
-  "browserProfile": "~/.agents/skills/ask-pro/browser-profile"
-}
-```
+The browser window is the credential boundary. The calling agent should ask the
+human to log in there and then run the emitted resume command.
 
 ## Resume behavior
 

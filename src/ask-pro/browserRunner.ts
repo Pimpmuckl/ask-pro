@@ -478,7 +478,7 @@ function buildAskProBrowserLogger(
     const shouldPrint =
       verbose || /\b(thinking|waiting|fallback|retry|url|reattach)\b/i.test(message);
     if (shouldPrint) {
-      console.log(message);
+      console.error(message);
     }
   }) as BrowserLogger;
   logger.verbose = Boolean(verbose);

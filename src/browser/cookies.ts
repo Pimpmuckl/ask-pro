@@ -118,7 +118,7 @@ async function readChromeCookies(
 
   if (process.env.ASK_PRO_DEBUG_COOKIES === "1" && warnings.length) {
     // eslint-disable-next-line no-console
-    console.log(`[cookies] sweet-cookie warnings:\n- ${warnings.join("\n- ")}`);
+    console.error(`[cookies] sweet-cookie warnings:\n- ${warnings.join("\n- ")}`);
   }
 
   const merged = new Map<string, CookieParam>();
