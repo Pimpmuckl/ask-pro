@@ -276,6 +276,9 @@ function printAuthInstructions(
 }
 
 function quoteCommandArg(value: string): string {
+  if (process.platform !== "win32") {
+    return `'${value.replace(/'/g, "'\\''")}'`;
+  }
   return `'${value.replace(/\\/g, "/").replace(/'/g, "''")}'`;
 }
 
@@ -283,12 +286,7 @@ function mergeStatusOptions(
   options: AskProOptions,
   status: { thinkingTime?: "extended"; temporary?: boolean },
 ): AskProOptions {
-  const temporary =
-    options.temporary !== undefined
-      ? options.temporary
-      : status.temporary === true
-        ? true
-        : undefined;
+  const temporary = options.temporary !== undefined ? options.temporary : status.temporary;
   return {
     ...options,
     extended: options.extended === true || status.thinkingTime === "extended",

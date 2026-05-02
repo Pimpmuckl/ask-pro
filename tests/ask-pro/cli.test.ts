@@ -85,6 +85,31 @@ describe("ask-pro cli", () => {
     });
   }, 30000);
 
+  test("preserves explicit no-temporary mode in dry-run resume command", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-no-temporary-"));
+    tempDirs.push(cwd);
+
+    const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
+    const tsxLoader = pathToFileURL(
+      path.join(process.cwd(), "node_modules", "tsx", "dist", "esm", "index.mjs"),
+    ).href;
+    await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--dry-run", "--no-temporary", "Review this."],
+      { cwd },
+    );
+
+    const sessions = await fs.readdir(path.join(cwd, ".ask-pro", "sessions"));
+    const statusRaw = await fs.readFile(
+      path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "status.json"),
+      "utf8",
+    );
+    expect(JSON.parse(statusRaw)).toMatchObject({
+      temporary: false,
+      resumeCommand: expect.stringContaining("--no-temporary --resume"),
+    });
+  }, 30000);
+
   test("does not infer source checkout launcher from an unrelated npm start script", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-npm-start-"));
     tempDirs.push(cwd);
