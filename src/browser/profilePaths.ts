@@ -19,16 +19,16 @@ export function resolveAskProAgentId(env: NodeJS.ProcessEnv = process.env): stri
   const value = env.ASK_PRO_AGENT_ID;
   if (value === undefined) return null;
   const raw = value.trim();
-  if (!raw) return null;
   if (raw !== value) {
     throw new Error("ASK_PRO_AGENT_ID must not start or end with whitespace.");
   }
-  const slug = raw
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/[-_.]{2,}/g, "-")
-    .replace(/^[-_.]+|[-_.]+$/g, "");
+  if (!raw) {
+    throw new Error("ASK_PRO_AGENT_ID must not be empty.");
+  }
+  if (!/^[a-z0-9._-]+$/.test(raw)) {
+    throw new Error("ASK_PRO_AGENT_ID must use only lowercase letters, numbers, '.', '_', or '-'.");
+  }
   const hash = createHash("sha256").update(raw).digest("hex").slice(0, 10);
-  const prefix = (slug || "agent").slice(0, 53).replace(/^[-_.]+|[-_.]+$/g, "") || "agent";
+  const prefix = raw.slice(0, 53).replace(/^[-_.]+|[-_.]+$/g, "") || "agent";
   return `${prefix}-${hash}`;
 }

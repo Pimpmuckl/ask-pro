@@ -35,9 +35,9 @@ When invoked:
 7. Resume or harvest as instructed by the CLI.
 8. Treat the answer as advisory; turn it into your own plan before editing code.
 
-For parallel or role-specific agents, set a stable `ASK_PRO_AGENT_ID` before
-running the CLI. Example: `ASK_PRO_AGENT_ID=review-t1 ask-pro ...`. Each agent
-id gets an isolated persistent browser profile.
+For parallel or role-specific agents, set a stable lowercase `ASK_PRO_AGENT_ID`
+before running the CLI. Example: `ASK_PRO_AGENT_ID=review-t1 ask-pro ...`. Each
+agent id gets an isolated persistent browser profile.
 
 ## Prompt Shape
 

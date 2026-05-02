@@ -61,7 +61,7 @@ describe("resolveBrowserConfig", () => {
   });
 
   test("uses an isolated browser profile when ASK_PRO_AGENT_ID is set", () => {
-    vi.stubEnv("ASK_PRO_AGENT_ID", "Review T1 / Windows");
+    vi.stubEnv("ASK_PRO_AGENT_ID", "review-t1-windows");
     const resolved = resolveBrowserConfig({ manualLogin: true });
     const profileDir = defaultAskProBrowserProfileDir();
 
@@ -74,24 +74,29 @@ describe("resolveBrowserConfig", () => {
   });
 
   test("keeps colliding agent slugs isolated with a stable hash suffix", () => {
-    const first = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review t1" });
-    const second = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review/t1" });
-    const caseNoise = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "Review T1" });
-    const invalid = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "🔒" });
+    const first = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review-t1" });
+    const second = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review.t1" });
     const reserved = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "con" });
 
     expect(first).toMatch(/^review-t1-[a-f0-9]{10}$/);
-    expect(second).toMatch(/^review-t1-[a-f0-9]{10}$/);
-    expect(caseNoise).toMatch(/^review-t1-[a-f0-9]{10}$/);
-    expect(caseNoise).not.toBe(first);
+    expect(second).toMatch(/^review.t1-[a-f0-9]{10}$/);
     expect(first).not.toBe(second);
-    expect(invalid).toMatch(/^agent-[a-f0-9]{10}$/);
     expect(reserved).toMatch(/^con-[a-f0-9]{10}$/);
   });
 
   test("rejects padded explicit agent ids instead of silently aliasing them", () => {
     expect(() => resolveAskProAgentId({ ASK_PRO_AGENT_ID: " review-t1 " })).toThrow(
       /must not start or end with whitespace/i,
+    );
+    expect(() => resolveAskProAgentId({ ASK_PRO_AGENT_ID: "   " })).toThrow(
+      /must not start or end with whitespace/i,
+    );
+    expect(() => resolveAskProAgentId({ ASK_PRO_AGENT_ID: "" })).toThrow(/must not be empty/i);
+    expect(() => resolveAskProAgentId({ ASK_PRO_AGENT_ID: "Review-T1" })).toThrow(
+      /lowercase letters/i,
+    );
+    expect(() => resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review t1" })).toThrow(
+      /lowercase letters/i,
     );
   });
 
