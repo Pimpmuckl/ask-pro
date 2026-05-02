@@ -35,6 +35,10 @@ When invoked:
 7. Resume or harvest as instructed by the CLI.
 8. Treat the answer as advisory; turn it into your own plan before editing code.
 
+By default, `ask-pro` uses normal Pro thinking effort. Add `--extended` only for
+mega-hard architecture questions, production-risk reviews, or implementation
+plan packages where a multi-hour wait is acceptable.
+
 For parallel or role-specific agents, set a stable lowercase `ASK_PRO_AGENT_ID`
 before running the CLI. Example: `ASK_PRO_AGENT_ID=review-t1 ask-pro ...`. Each
 agent id gets an isolated persistent browser profile.
@@ -55,6 +59,7 @@ If useful, ask Pro to create `ask-pro-response.zip` with those files. Always sup
 
 ```bash
 ask-pro "Review the async billing webhook migration plan and return an implementation plan."
+ask-pro --extended "Produce a deep implementation plan for this risky migration."
 ask-pro --files "src/api/stripe/**" --files "prisma/**" --files "src/lib/billing/**" \
   "Review whether this Stripe webhook flow should use a queue or transactional outbox."
 ask-pro --dry-run "Prepare the Pro handoff but do not open the browser."

@@ -56,7 +56,9 @@ describe("ask-pro browser runner", () => {
     const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
     expect(firstCall?.[0]).toMatchObject({
       config: {
+        url: "https://chatgpt.com/?temporary-chat=true",
         attachRunning: false,
+        thinkingTime: "standard",
         manualLoginProfileDir: expect.stringMatching(
           /agents[\\/]+review-t1-[a-f0-9]{10}[\\/]+browser-profile$/,
         ),
@@ -79,10 +81,32 @@ describe("ask-pro browser runner", () => {
     const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
     expect(firstCall?.[0]).toMatchObject({
       config: {
+        url: "https://chatgpt.com/?temporary-chat=true",
         attachRunning: false,
+        thinkingTime: "standard",
         manualLoginProfileDir: expect.stringContaining(
           path.join(".agents", "skills", "ask-pro", "browser-profile"),
         ),
+      },
+    });
+  });
+
+  test("runs ask-pro sessions with extended thinking when requested", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-extended-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review with extended thinking.",
+      filePatterns: [],
+      dryRun: false,
+    });
+
+    await runAskProBrowserSession({ cwd, sessionId: session.id, thinkingTime: "extended" });
+
+    const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({
+      config: {
+        thinkingTime: "extended",
       },
     });
   });

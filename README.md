@@ -147,8 +147,15 @@ in in the opened browser, then resume:
 ask-pro --resume <session-id>
 ```
 
-Browser runs can take a long time. Pro thinking is allowed a 3 hour automation
-budget by default.
+Browser runs can take a long time. `ask-pro` uses normal Pro thinking effort by
+default. For a deliberate long-haul escalation, pass `--extended`:
+
+```bash
+ask-pro --extended "Review this architecture decision."
+```
+
+Use `--extended` for difficult architecture questions, production-risk reviews,
+and implementation-plan packages where a multi-hour wait is acceptable.
 
 ## Commands
 
@@ -166,6 +173,7 @@ Useful options:
 | `--status [session-id]`  | Show the latest or selected session status.                             |
 | `--harvest [session-id]` | Print harvested `ANSWER.md`.                                            |
 | `--copy [session-id]`    | Print the session prompt/copy target for manual fallback.               |
+| `--extended`             | Request Extended Pro thinking for deep, multi-hour escalations.         |
 | `--verbose`              | Print browser automation diagnostics.                                   |
 
 Examples:

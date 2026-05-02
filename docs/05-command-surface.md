@@ -49,6 +49,7 @@ ask-pro --resume [session-id]
 ask-pro --status [session-id]
 ask-pro --harvest [session-id]
 ask-pro --copy [session-id]
+ask-pro --extended "<question>"
 ```
 
 Optional file flags:
@@ -57,7 +58,9 @@ Optional file flags:
 ask-pro --files "src/**" --files "prisma/**" "<question>"
 ```
 
-Do not expose model/preset complexity in the normal path.
+Do not expose broad model/preset complexity in the normal path. `--extended` is
+the single explicit long-thinking opt-in for hard architecture, production-risk,
+and implementation-plan package questions where a multi-hour wait is acceptable.
 
 ## Default behavior
 
@@ -68,7 +71,7 @@ Do not expose model/preset complexity in the normal path.
 3. write/accept prompt
 4. open or attach to ChatGPT browser
 5. select best Pro target if possible
-6. select deepest compatible thinking mode if possible
+6. select normal Pro thinking effort, or Extended when `--extended` is set
 7. upload context
 8. submit
 9. wait/heartbeat/status

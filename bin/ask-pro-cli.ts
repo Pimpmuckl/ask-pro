@@ -22,6 +22,7 @@ interface AskProOptions {
   status?: string | boolean;
   harvest?: string | boolean;
   copy?: string | boolean;
+  extended?: boolean;
   verbose?: boolean;
 }
 
@@ -38,6 +39,10 @@ program
   .option("--status [session-id]", "show ask-pro session status")
   .option("--harvest [session-id]", "print harvested ANSWER.md for a session")
   .option("--copy [session-id]", "print the copy target for a session")
+  .option(
+    "--extended",
+    "request Extended Pro thinking; use only when a multi-hour wait is acceptable",
+  )
   .option("--verbose", "print browser automation diagnostics")
   .action(async (questionParts: string[], options: AskProOptions) => {
     try {
@@ -127,7 +132,12 @@ async function submitOrResumeBrowserSession(
   }
   try {
     console.log("Opening ChatGPT Pro. Waiting with 180m budget after submission.");
-    await runAskProBrowserSession({ cwd, sessionId, verbose: options.verbose });
+    await runAskProBrowserSession({
+      cwd,
+      sessionId,
+      thinkingTime: options.extended ? "extended" : "standard",
+      verbose: options.verbose,
+    });
     console.log(`Pro response harvested: .ask-pro/sessions/${sessionId}/ANSWER.md`);
   } catch (error) {
     if (error instanceof AskProNeedsAuthError) {

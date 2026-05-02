@@ -14,6 +14,22 @@ afterEach(async () => {
 });
 
 describe("ask-pro cli", () => {
+  test("documents the extended thinking switch", async () => {
+    const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
+    const tsxLoader = pathToFileURL(
+      path.join(process.cwd(), "node_modules", "tsx", "dist", "esm", "index.mjs"),
+    ).href;
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--import",
+      tsxLoader,
+      cli,
+      "--help",
+    ]);
+
+    expect(stdout).toContain("--extended");
+    expect(stdout).toContain("multi-hour wait");
+  }, 30000);
+
   test("creates a dry-run session", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-"));
     tempDirs.push(cwd);

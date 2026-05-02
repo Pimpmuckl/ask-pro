@@ -37,8 +37,8 @@ Risk: Temporary Chat may not expose desired Pro model picker.
 
 Mitigation:
 
-- do not require Temporary Chat in V1
-- prefer dedicated clean ChatGPT project/chat URL
+- launch with `https://chatgpt.com/?temporary-chat=true` for clean new runs
+- keep model-picker failure messages actionable if ChatGPT changes availability
 - keep session metadata
 
 ## Generated zip unavailable

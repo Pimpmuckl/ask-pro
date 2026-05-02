@@ -11,7 +11,7 @@ import {
 } from "../browser/profilePaths.js";
 import { runBrowserMode, type BrowserRunResult } from "../browserMode.js";
 import { resumeBrowserSession } from "../browser/reattach.js";
-import type { BrowserLogger } from "../browser/types.js";
+import type { BrowserLogger, ThinkingTimeLevel } from "../browser/types.js";
 import {
   appendAskProLog,
   getAskProSessionPaths,
@@ -24,16 +24,19 @@ import { harvestLatestAssistantZip, writeResponseZipManifest } from "./responseZ
 
 const DEFAULT_TIMEOUT_MS = 180 * 60 * 1000;
 const MANUAL_LOGIN_WAIT_MS = 10 * 60 * 1000;
+const ASK_PRO_CHATGPT_URL = "https://chatgpt.com/?temporary-chat=true";
 
 export interface RunAskProBrowserSessionOptions {
   cwd: string;
   sessionId: string;
+  thinkingTime?: ThinkingTimeLevel;
   verbose?: boolean;
 }
 
 export async function runAskProBrowserSession({
   cwd,
   sessionId,
+  thinkingTime = "standard",
   verbose,
 }: RunAskProBrowserSessionOptions): Promise<BrowserRunResult> {
   const paths = getAskProSessionPaths(cwd, sessionId);
@@ -55,6 +58,7 @@ export async function runAskProBrowserSession({
         },
       ],
       config: {
+        url: ASK_PRO_CHATGPT_URL,
         manualLogin: true,
         attachRunning: false,
         manualLoginProfileDir: browserProfile,
@@ -65,7 +69,7 @@ export async function runAskProBrowserSession({
         assistantRecheckTimeoutMs: 180_000,
         desiredModel: "GPT-5.5 Pro",
         modelStrategy: "select",
-        thinkingTime: "extended",
+        thinkingTime,
         acceptLanguage: "en-US,en",
         keepBrowser: true,
         allowCookieErrors: true,

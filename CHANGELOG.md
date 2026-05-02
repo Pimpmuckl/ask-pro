@@ -18,7 +18,7 @@
 ### Added
 
 - Add the minimal V1 CLI: `ask-pro "<question>"`, `--files`, `--dry-run`,
-  `--resume`, `--status`, `--harvest`, `--copy`, and `--verbose`.
+  `--resume`, `--status`, `--harvest`, `--copy`, `--extended`, and `--verbose`.
 - Add the `$ask-pro` Codex skill and plugin skeleton.
 - Add `ASK_PRO_AGENT_ID` support for per-agent persistent browser profiles.
 - Add generated response zip discovery, download, validation, extraction, and
@@ -31,6 +31,10 @@
 - Browser: recognize ChatGPT's composer-pill model picker and Configure /
   `Pro thinking effort` dialog.
 - Browser: request Extended Pro thinking when available.
+- Browser: default ask-pro runs to normal Pro thinking effort; use `--extended`
+  to request Extended Pro thinking for deep, multi-hour escalations.
+- Browser: launch ask-pro runs with ChatGPT's `?temporary-chat=true` URL so new
+  Pro escalations start in Temporary Chat without relying on the UI toggle.
 - Browser: force an English browser locale for ask-pro runs to reduce selector
   drift from localized ChatGPT UI.
 - Browser: detect the current top-right temporary-chat control shape without

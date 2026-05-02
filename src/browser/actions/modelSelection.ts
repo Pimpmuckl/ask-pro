@@ -45,7 +45,7 @@ export async function ensureModelSelection(
       const availableHint = available.length > 0 ? ` Available: ${available.join(", ")}.` : "";
       const tempHint =
         isTemporary && /\bpro\b/i.test(desiredModel)
-          ? ' You are in Temporary Chat mode; Pro models are not available there. Remove "temporary-chat=true" from --chatgpt-url or use a non-Pro model (e.g. gpt-5.2-instant).'
+          ? " Temporary Chat mode is active; verify the model picker exposes Pro in the current account/UI."
           : "";
       throw new Error(
         `Unable to find model option matching "${desiredModel}" in the model switcher.${availableHint}${tempHint}`,
