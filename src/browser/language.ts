@@ -45,14 +45,33 @@ export async function applyPageLanguageOverrides(
 
 async function mergeJsonFile(filePath: string, patch: Record<string, unknown>): Promise<void> {
   let current: Record<string, unknown> = {};
+  let raw: string | null = null;
   try {
-    current = JSON.parse(await fs.readFile(filePath, "utf8")) as Record<string, unknown>;
-  } catch {
-    current = {};
+    raw = await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if (!isMissingFileError(error)) {
+      return;
+    }
+  }
+  if (raw !== null) {
+    try {
+      current = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return;
+    }
   }
   const merged = mergeObjects(current, patch);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, `${JSON.stringify(merged, null, 2)}\n`);
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "ENOENT"
+  );
 }
 
 function mergeObjects(

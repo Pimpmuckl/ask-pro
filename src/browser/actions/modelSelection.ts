@@ -147,6 +147,35 @@ function buildModelSelectionExpression(
       return null;
     };
     ${buildModelPickerDomHelpers()}
+    const detectTemporaryChat = () => {
+      try {
+        const url = new URL(window.location.href);
+        const flag = (url.searchParams.get('temporary-chat') ?? '').toLowerCase();
+        if (flag === 'true' || flag === '1' || flag === 'yes') return true;
+      } catch {}
+      const title = (document.title || '').toLowerCase();
+      if (title.includes('temporary chat')) return true;
+      const body = (document.body?.innerText || '').toLowerCase();
+      if (body.includes('temporary chat')) return true;
+      const temporaryControls = Array.from(document.querySelectorAll('button, [role="button"], input[type="checkbox"]'));
+      return temporaryControls.some((node) => {
+        const label = [
+          node.getAttribute?.('aria-label') ?? '',
+          node.getAttribute?.('title') ?? '',
+          node.textContent ?? '',
+        ].join(' ').toLowerCase();
+        const pressed = (node.getAttribute?.('aria-pressed') ?? '').toLowerCase();
+        const checked = (node.getAttribute?.('aria-checked') ?? '').toLowerCase();
+        const inputChecked =
+          typeof HTMLInputElement !== 'undefined' &&
+          node instanceof HTMLInputElement &&
+          node.type === 'checkbox' &&
+          node.checked;
+        if (label.includes('turn off temporary chat')) return true;
+        if (label.includes('temporary chat') && (pressed === 'true' || checked === 'true' || inputChecked)) return true;
+        return false;
+      });
+    };
 
     const button = findModelButton();
     if (!button) {
@@ -364,35 +393,6 @@ function buildModelSelectionExpression(
 
     return new Promise((resolve) => {
       const start = performance.now();
-      const detectTemporaryChat = () => {
-        try {
-          const url = new URL(window.location.href);
-          const flag = (url.searchParams.get('temporary-chat') ?? '').toLowerCase();
-          if (flag === 'true' || flag === '1' || flag === 'yes') return true;
-        } catch {}
-        const title = (document.title || '').toLowerCase();
-        if (title.includes('temporary chat')) return true;
-        const body = (document.body?.innerText || '').toLowerCase();
-        if (body.includes('temporary chat')) return true;
-        const temporaryControls = Array.from(document.querySelectorAll('button, [role="button"], input[type="checkbox"]'));
-        return temporaryControls.some((node) => {
-          const label = [
-            node.getAttribute?.('aria-label') ?? '',
-            node.getAttribute?.('title') ?? '',
-            node.textContent ?? '',
-          ].join(' ').toLowerCase();
-          const pressed = (node.getAttribute?.('aria-pressed') ?? '').toLowerCase();
-          const checked = (node.getAttribute?.('aria-checked') ?? '').toLowerCase();
-          const inputChecked =
-            typeof HTMLInputElement !== 'undefined' &&
-            node instanceof HTMLInputElement &&
-            node.type === 'checkbox' &&
-            node.checked;
-          if (label.includes('turn off temporary chat')) return true;
-          if (label.includes('temporary chat') && (pressed === 'true' || checked === 'true' || inputChecked)) return true;
-          return false;
-        });
-      };
       const collectAvailableOptions = () => {
         const menuRoots = Array.from(document.querySelectorAll(${menuContainerLiteral}));
         const nodes = menuRoots.length > 0

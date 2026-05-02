@@ -263,12 +263,15 @@ export async function resumeAskProBrowserSession({
       sessionId,
       "No saved browser runtime metadata; reopening managed browser submission.",
     );
+    const storedUrlIsDefaultTemporary = chatgptUrl === ASK_PRO_TEMPORARY_CHATGPT_URL;
+    const shouldPreserveUrl =
+      temporary !== undefined || (metadata.url !== undefined && !storedUrlIsDefaultTemporary);
     await runAskProBrowserSession({
       cwd,
       sessionId,
       thinkingTime: thinkingTime ?? metadata.thinkingTime,
-      temporary: isTemporaryAskProUrl(chatgptUrl),
-      chatgptUrl,
+      temporary,
+      chatgptUrl: shouldPreserveUrl ? chatgptUrl : undefined,
       browserProfileDir: fallbackProfile,
       agentId: metadata.agentId ?? null,
       verbose,

@@ -88,7 +88,7 @@ class FakeDocument extends EventTarget {
 const runModelSelectionExpression = async (
   targetModel: string,
   document: FakeDocument,
-  options: { fastTimeout?: boolean } = {},
+  options: { fastTimeout?: boolean; href?: string } = {},
 ) => {
   const expression = buildModelSelectionExpressionForTest(targetModel);
   let now = 0;
@@ -113,7 +113,7 @@ const runModelSelectionExpression = async (
         }
       : setTimeout,
     URL,
-    window: { location: { href: "https://chatgpt.com/" } },
+    window: { location: { href: options.href ?? "https://chatgpt.com/" } },
   });
   return await new Script(expression).runInContext(context);
 };
@@ -153,6 +153,14 @@ describe("browser model selection matchers", () => {
       "candidateTestIdVersion && candidateTestIdVersion !== desiredVersion",
     );
     expect(expression).toContain("!candidateVisibleAlias");
+  });
+
+  it("reports temporary chat evidence when the model button is missing", async () => {
+    const result = await runModelSelectionExpression("gpt-5.5-pro", new FakeDocument([]), {
+      href: "https://chatgpt.com/?temporary-chat=true",
+    });
+
+    expect(result).toEqual({ status: "button-missing", hint: { temporaryChat: true } });
   });
 
   it("does not accept a generic Pro pill as gpt-5.5-pro under select strategy", async () => {

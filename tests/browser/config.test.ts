@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { buildChromeFlags } from "../../src/browser/chromeLifecycle.js";
@@ -6,6 +8,7 @@ import { CHATGPT_URL } from "../../src/browser/constants.js";
 import {
   applyPageLanguageOverrides,
   buildChromeProfileLanguagePatchForTest,
+  seedChromeProfileLanguage,
 } from "../../src/browser/language.js";
 import {
   askProAgentIdForManagedBrowserProfileDir,
@@ -16,8 +19,11 @@ import {
   resolveAskProAgentId,
 } from "../../src/browser/profilePaths.js";
 
-afterEach(() => {
+const tempDirs: string[] = [];
+
+afterEach(async () => {
   vi.unstubAllEnvs();
+  await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
 describe("resolveBrowserConfig", () => {
@@ -190,5 +196,19 @@ describe("resolveBrowserConfig", () => {
       },
     });
     expect(JSON.stringify(patch)).not.toContain("de-DE");
+  });
+
+  test("does not overwrite unreadable Chrome preference JSON", async () => {
+    const userDataDir = await fs.mkdtemp(
+      path.join(os.homedir(), ".agents", "skills", "ask-pro", "test-language-"),
+    );
+    tempDirs.push(userDataDir);
+    const prefs = path.join(userDataDir, "Default", "Preferences");
+    await fs.mkdir(path.dirname(prefs), { recursive: true });
+    await fs.writeFile(prefs, "{not valid json", "utf8");
+
+    await seedChromeProfileLanguage(userDataDir, "en-US,en");
+
+    await expect(fs.readFile(prefs, "utf8")).resolves.toBe("{not valid json");
   });
 });

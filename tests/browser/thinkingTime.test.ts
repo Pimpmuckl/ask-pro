@@ -232,6 +232,33 @@ describe("browser thinking-time selection expression", () => {
     }
   });
 
+  it("keeps polling the old effort menu when the menu itself has open state", async () => {
+    let extendedClicked = false;
+    const modelButton = new FakeElement(
+      "Standard",
+      {
+        "aria-haspopup": "menu",
+        class: "__composer-pill __composer-pill--neutral",
+      },
+      [],
+      () => {
+        document.menus.push(
+          new FakeElement("Standard Extended", { "data-state": "open", role: "menu" }, [
+            new FakeElement("Pro Extended", { role: "menuitemradio" }, [], () => {
+              extendedClicked = true;
+            }),
+          ]),
+        );
+      },
+    );
+    const document = new FakeDocument(modelButton, [], {});
+
+    const result = await runThinkingTimeExpression(document, "extended");
+
+    expect(result).toEqual({ status: "switched", label: "Pro Extended" });
+    expect(extendedClicked).toBe(true);
+  });
+
   it("selects Extended through Configure / Pro thinking effort", async () => {
     let configureClicked = false;
     let proClicked = false;

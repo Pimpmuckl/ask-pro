@@ -316,6 +316,55 @@ describe("ask-pro browser runner", () => {
     });
   });
 
+  test("auth relaunch preserves default temporary chat fallback semantics", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-temp-fallback-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Resume default temporary chat with fallback.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "needs_user_auth",
+        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        url: "https://chatgpt.com/?temporary-chat=true",
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "NEEDS_USER_AUTH" });
+    runBrowserModeMock
+      .mockRejectedValueOnce(
+        new Error(
+          'Unable to find model option matching "GPT-5.5 Pro" in the model switcher. Temporary Chat mode is active; verify the model picker exposes Pro in the current account/UI.',
+        ),
+      )
+      .mockResolvedValueOnce({
+        answerText: "agent answer",
+        answerMarkdown: "# Agent\n",
+        browserTransport: "launched",
+      });
+
+    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
+
+    expect(runBrowserModeMock).toHaveBeenCalledTimes(2);
+    const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
+    const secondCall = runBrowserModeMock.mock.calls[1] as unknown[] | undefined;
+    expect(firstCall?.[0]).toMatchObject({
+      config: {
+        url: "https://chatgpt.com/?temporary-chat=true",
+      },
+    });
+    expect(secondCall?.[0]).toMatchObject({
+      config: {
+        url: "https://chatgpt.com/",
+      },
+    });
+  });
+
   test("fresh retry honors no-temporary over a stored temporary URL", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-no-temporary-retry-"));
     tempDirs.push(cwd);

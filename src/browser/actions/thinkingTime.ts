@@ -212,7 +212,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       if (!text.includes('pro') && !text.includes('thinking') && !aria.includes('pro') && !aria.includes('thinking')) {
         return 200;
       }
-      return 0;
+      return 120;
     };
     const findOptionInMenu = (menu) => {
       let best = null;
@@ -232,7 +232,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       while (performance.now() - start < MAX_WAIT_MS) {
         await sleep(100);
         const newerPickerEvidence = document.querySelectorAll(
-          '[data-model-picker-thinking-effort-action="true"], [data-testid="model-configure-modal"], [role="dialog"], [data-state="open"]',
+          '[data-model-picker-thinking-effort-action="true"], [data-testid="model-configure-modal"], [role="dialog"]',
         );
         if (newerPickerEvidence.length > 0) break;
         const menu = findOldEffortMenu();
