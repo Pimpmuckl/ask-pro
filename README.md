@@ -107,6 +107,17 @@ name.
 After restarting Codex, the skill list should include both `$ask-pro` and the
 plugin-qualified `$ask-pro:ask-pro`.
 
+When you change plugin-facing files such as `README.md`,
+`.codex-plugin/plugin.json`, or `skills/ask-pro/SKILL.md`, refresh the local
+Codex plugin cache from the repo source:
+
+```powershell
+pnpm run plugin:refresh
+```
+
+The cache under `~/.codex/plugins/cache/...` is generated install state. Do not
+edit or hand-copy files there; refresh the plugin and restart or reload Codex.
+
 An eventual `npm install -g ask_pro` will install the `ask-pro` CLI only. It
 will not automatically register the Codex plugin unless Codex adds an npm-based
 plugin installer or marketplace source.

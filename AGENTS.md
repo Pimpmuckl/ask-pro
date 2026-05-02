@@ -34,3 +34,5 @@ ask_pro-specific notes:
 - Working on Windows? Read and update `docs/windows-work.md`.
 - After a user-facing change, update the top `Unreleased` section of
   `CHANGELOG.md`.
+- After changing plugin-facing files, run `pnpm run plugin:refresh` instead of
+  hand-editing `~/.codex/plugins/cache/...`, then restart or reload Codex.

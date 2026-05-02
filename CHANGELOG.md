@@ -20,6 +20,8 @@
 - Add the minimal V1 CLI: `ask-pro "<question>"`, `--files`, `--dry-run`,
   `--resume`, `--status`, `--harvest`, `--copy`, `--extended`, and `--verbose`.
 - Add the `$ask-pro` Codex skill and plugin skeleton.
+- Add `pnpm run plugin:refresh` to refresh the local Codex plugin cache from
+  the repo source without hand-copying generated cache files.
 - Add `ASK_PRO_AGENT_ID` support for per-agent persistent browser profiles.
 - Add generated response zip discovery, download, validation, extraction, and
   `PRO_OUTPUT_MANIFEST.json` metadata.
