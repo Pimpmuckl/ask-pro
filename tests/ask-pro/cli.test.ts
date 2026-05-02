@@ -227,7 +227,8 @@ describe("ask-pro cli", () => {
     expect(stderr).toBe("");
     expect(stdout).toMatch(/^ask_pro\n/);
     expect(stdout).toContain("  state: dry_run_complete\n");
-    expect(stdout).toContain("  action: read_answer\n");
+    expect(stdout).toContain("  action: resume\n");
+    expect(stdout).toContain('  resume: "ask-pro --resume ');
     expect(stdout).toContain("ANSWER.md");
   }, 30000);
 

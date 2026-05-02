@@ -86,12 +86,7 @@ async function runAskPro(question: string, options: AskProOptions): Promise<void
       cwd,
       sessionId: optionSessionId(options.copy),
     });
-    writeToon("ask_pro", {
-      session: status.sessionId,
-      state: normalizeState(status.status),
-      answer: path.join(dir, "ANSWER.md"),
-      action: "read_answer",
-    });
+    printStatusRecord(status, { answer: path.join(dir, "ANSWER.md") });
     return;
   }
   if (options.resume !== undefined) {
