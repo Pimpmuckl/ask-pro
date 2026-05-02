@@ -28,6 +28,16 @@ if (!plugin) {
 if (plugin.source?.source !== "local") {
   throw new Error(`Plugin '${pluginName}' is not a local marketplace plugin.`);
 }
+const configuredSourcePath = plugin.source?.path;
+if (typeof configuredSourcePath !== "string" || !configuredSourcePath.trim()) {
+  throw new Error(`Plugin '${pluginName}' local source must include a path.`);
+}
+const configuredSourceRoot = resolveConfiguredSourceRoot(configuredSourcePath, marketplaceFile);
+if (!samePath(configuredSourceRoot, repoRoot)) {
+  throw new Error(
+    `Plugin '${pluginName}' marketplace path resolves to ${configuredSourceRoot}, not this checkout ${repoRoot}.`,
+  );
+}
 
 const manifestPath = path.join(repoRoot, ".codex-plugin", "plugin.json");
 const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
@@ -92,4 +102,18 @@ async function exists(filePath) {
   } catch {
     return false;
   }
+}
+
+function resolveConfiguredSourceRoot(sourcePath, marketplaceFile) {
+  const candidates = [
+    path.resolve(path.dirname(marketplaceFile), sourcePath),
+    path.resolve(os.homedir(), sourcePath),
+  ];
+  return candidates.find((candidate) => samePath(candidate, repoRoot)) ?? candidates[0];
+}
+
+function samePath(left, right) {
+  const a = path.resolve(left);
+  const b = path.resolve(right);
+  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }

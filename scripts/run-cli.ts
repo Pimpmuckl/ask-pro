@@ -25,5 +25,5 @@ child.on("exit", (code) => {
 });
 
 function quoteCommandArg(value: string): string {
-  return `"${value.replace(/\\/g, "/").replace(/(["$`])/g, "\\$1")}"`;
+  return `'${value.replace(/\\/g, "/").replace(/'/g, "''")}'`;
 }

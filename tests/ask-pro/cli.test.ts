@@ -125,7 +125,7 @@ describe("ask-pro cli", () => {
         env: {
           ...process.env,
           ASK_PRO_SOURCE_CHECKOUT_LAUNCHER:
-            'npm exec --yes pnpm@10.33.2 -- --dir "C:/Code/ask-pro" start --',
+            "npm exec --yes pnpm@10.33.2 -- --dir 'C:/Code/ask-pro' start --",
           INIT_CWD: cwd,
         },
       },
@@ -138,10 +138,10 @@ describe("ask-pro cli", () => {
     );
     expect(JSON.parse(statusRaw)).toMatchObject({
       resumeCommand: expect.stringMatching(
-        /^npm exec --yes pnpm@10\.33\.2 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --extended --resume /,
+        /^npm exec --yes pnpm@10\.33\.2 -- --dir 'C:\/Code\/ask-pro' start -- --cwd '.+' --extended --resume /,
       ),
       harvestCommand: expect.stringMatching(
-        /^npm exec --yes pnpm@10\.33\.2 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --harvest /,
+        /^npm exec --yes pnpm@10\.33\.2 -- --dir 'C:\/Code\/ask-pro' start -- --cwd '.+' --harvest /,
       ),
     });
   }, 30000);
@@ -162,7 +162,7 @@ describe("ask-pro cli", () => {
         env: {
           ...process.env,
           ASK_PRO_SOURCE_CHECKOUT_LAUNCHER:
-            'npm exec --yes pnpm@10.33.2 -- --dir "C:/Code/ask-pro" start --',
+            "npm exec --yes pnpm@10.33.2 -- --dir 'C:/Code/ask-pro' start --",
           INIT_CWD: projectCwd,
         },
       },

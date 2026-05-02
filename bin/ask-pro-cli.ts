@@ -276,7 +276,7 @@ function printAuthInstructions(
 }
 
 function quoteCommandArg(value: string): string {
-  return `"${value.replace(/\\/g, "/").replace(/(["$`])/g, "\\$1")}"`;
+  return `'${value.replace(/\\/g, "/").replace(/'/g, "''")}'`;
 }
 
 function mergeStatusOptions(
