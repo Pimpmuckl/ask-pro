@@ -128,10 +128,11 @@ ask-pro "Review this migration plan."
 Remove-Item Env:ASK_PRO_AGENT_ID
 ```
 
-That profile lives under:
+That profile lives under an agent-specific directory. The final directory name
+includes a stable hash suffix so similar agent names cannot collide:
 
 ```text
-~/.agents/skills/ask-pro/agents/review-t1/browser-profile
+~/.agents/skills/ask-pro/agents/review-t1-<hash>/browser-profile
 ```
 
 On the first browser run, ChatGPT may ask you to sign in, complete MFA, or clear

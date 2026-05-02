@@ -65,11 +65,25 @@ describe("resolveBrowserConfig", () => {
     const resolved = resolveBrowserConfig({ manualLogin: true });
     const profileDir = defaultAskProBrowserProfileDir();
 
-    expect(resolveAskProAgentId()).toBe("review-t1-windows");
+    const agentId = resolveAskProAgentId();
+    expect(agentId).toMatch(/^review-t1-windows-[a-f0-9]{10}$/);
     expect(resolved.manualLoginProfileDir).toBe(profileDir);
     expect(profileDir).toContain(
-      path.join(".agents", "skills", "ask-pro", "agents", "review-t1-windows", "browser-profile"),
+      path.join(".agents", "skills", "ask-pro", "agents", agentId!, "browser-profile"),
     );
+  });
+
+  test("keeps colliding agent slugs isolated with a stable hash suffix", () => {
+    const first = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review t1" });
+    const second = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review/t1" });
+    const invalid = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "🔒" });
+    const reserved = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "con" });
+
+    expect(first).toMatch(/^review-t1-[a-f0-9]{10}$/);
+    expect(second).toMatch(/^review-t1-[a-f0-9]{10}$/);
+    expect(first).not.toBe(second);
+    expect(invalid).toMatch(/^agent-[a-f0-9]{10}$/);
+    expect(reserved).toMatch(/^con-[a-f0-9]{10}$/);
   });
 
   test("rejects temporary chat URLs when desiredModel is Pro", () => {

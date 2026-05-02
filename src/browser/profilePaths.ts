@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
@@ -18,5 +19,7 @@ export function resolveAskProAgentId(env: NodeJS.ProcessEnv = process.env): stri
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/[-_.]{2,}/g, "-")
     .replace(/^[-_.]+|[-_.]+$/g, "");
-  return slug ? slug.slice(0, 64) : "agent";
+  const hash = createHash("sha256").update(raw).digest("hex").slice(0, 10);
+  const prefix = (slug || "agent").slice(0, 53).replace(/^[-_.]+|[-_.]+$/g, "") || "agent";
+  return `${prefix}-${hash}`;
 }
