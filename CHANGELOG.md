@@ -22,6 +22,8 @@
 - Add the `$ask-pro` Codex skill and plugin skeleton.
 - Add `pnpm run plugin:refresh` to refresh the local Codex plugin cache from
   the repo source without hand-copying generated cache files.
+- Document the source-checkout CLI fallback for agents when `ask-pro` is not on
+  `PATH`.
 - Add `ASK_PRO_AGENT_ID` support for per-agent persistent browser profiles.
 - Add generated response zip discovery, download, validation, extraction, and
   `PRO_OUTPUT_MANIFEST.json` metadata.

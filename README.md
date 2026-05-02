@@ -41,6 +41,13 @@ ask-pro "Review the staged implementation plan."
 
 Requires Node 24+.
 
+If `ask-pro` is not on `PATH`, agents can still use the source checkout:
+
+```powershell
+cd C:\Code\ask-pro
+npm exec --yes pnpm@10.33.2 -- start -- "Review the staged implementation plan."
+```
+
 ### Codex Plugin
 
 The CLI and Codex plugin are separate installs. The plugin is what makes
@@ -117,6 +124,8 @@ pnpm run plugin:refresh
 
 The cache under `~/.codex/plugins/cache/...` is generated install state. Do not
 edit or hand-copy files there; refresh the plugin and restart or reload Codex.
+The plugin cache intentionally contains docs and skills only; run the CLI from
+the source checkout or a linked `ask-pro` binary.
 
 An eventual `npm install -g ask_pro` will install the `ask-pro` CLI only. It
 will not automatically register the Codex plugin unless Codex adds an npm-based

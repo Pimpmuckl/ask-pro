@@ -31,6 +31,8 @@ When invoked:
 3. Choose a small, high-signal file bundle with `--files`.
 4. Write the prompt yourself; include constraints, what you inspected, the files attached, options considered, and the output you need.
 5. Run the smallest useful command, usually `ask-pro --files "<glob>" "<prompt>"`.
+   If `ask-pro` is not on `PATH`, run it from the source checkout instead:
+   `cd C:/Code/ask-pro && npm exec --yes pnpm@10.33.2 -- start -- --files "<glob>" "<prompt>"`.
 6. If auth is required, stop and ask the human to log in in the opened browser.
 7. Resume or harvest as instructed by the CLI.
 8. Treat the answer as advisory; turn it into your own plan before editing code.
@@ -65,6 +67,13 @@ ask-pro --files "src/api/stripe/**" --files "prisma/**" --files "src/lib/billing
 ask-pro --dry-run "Prepare the Pro handoff but do not open the browser."
 ask-pro --resume <session-id>
 ask-pro --harvest <session-id>
+```
+
+If the binary is not on `PATH`, use the source checkout fallback:
+
+```bash
+cd C:/Code/ask-pro
+npm exec --yes pnpm@10.33.2 -- start -- "Review the async billing webhook migration plan."
 ```
 
 ## Safety

@@ -58,8 +58,6 @@ New-Item -ItemType Directory -Path $targetRoot -Force | Out-Null
 $itemsToCopy = @(
   ".codex-plugin",
   "skills",
-  "assets",
-  "scripts",
   "references",
   "README.md",
   "LICENSE"
