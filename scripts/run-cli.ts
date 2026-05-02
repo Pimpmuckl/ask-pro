@@ -28,5 +28,5 @@ function quoteCommandArg(value: string): string {
   if (process.platform !== "win32") {
     return `'${value.replace(/'/g, "'\\''")}'`;
   }
-  return `'${value.replace(/\\/g, "/").replace(/'/g, "''")}'`;
+  return `"${value.replace(/"/g, '""')}"`;
 }
