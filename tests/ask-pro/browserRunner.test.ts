@@ -185,7 +185,11 @@ describe("ask-pro browser runner", () => {
       dryRun: false,
     });
     runBrowserModeMock
-      .mockRejectedValueOnce(new Error("Unable to locate the ChatGPT model selector button."))
+      .mockRejectedValueOnce(
+        new Error(
+          "Unable to locate the ChatGPT model selector button. Temporary Chat mode is active; verify the model picker exposes Pro in the current account/UI.",
+        ),
+      )
       .mockResolvedValueOnce({
         answerText: "agent answer",
         answerMarkdown: "# Agent\n",
@@ -207,6 +211,26 @@ describe("ask-pro browser runner", () => {
         url: "https://chatgpt.com/",
       },
     });
+  });
+
+  test("does not fall back when model picker is missing without temporary-chat evidence", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-picker-missing-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review with generic picker failure.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    runBrowserModeMock.mockRejectedValueOnce(
+      new Error("Unable to locate the ChatGPT model selector button."),
+    );
+
+    await expect(runAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      /model selector button/,
+    );
+
+    expect(runBrowserModeMock).toHaveBeenCalledTimes(1);
   });
 
   test("does not fall back when explicit temporary chat hides Pro", async () => {

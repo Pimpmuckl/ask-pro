@@ -145,7 +145,9 @@ describe("browser model selection matchers", () => {
     expect(expression).toContain("const isEffortOnly = label === 'pro' || label === 'thinking'");
     expect(expression).toContain("matchesVisibleAlias");
     expect(expression).toContain("best.score >= 100");
-    expect(expression).toContain("return { status: 'button-missing' }");
+    expect(expression).toContain(
+      "return { status: 'button-missing', hint: { temporaryChat: detectTemporaryChat() } }",
+    );
     expect(expression).toContain("candidateTextVersion && candidateTextVersion !== desiredVersion");
     expect(expression).toContain(
       "candidateTestIdVersion && candidateTestIdVersion !== desiredVersion",

@@ -461,7 +461,9 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
         const node = document.getElementById(id);
         if (node) return node;
       }
-      const menus = document.querySelectorAll(MENU_CONTAINER_SELECTOR + ', [role="group"]');
+      const menus = document.querySelectorAll(
+        MENU_CONTAINER_SELECTOR + ', [role="listbox"], [role="group"]'
+      );
       let best = null;
       for (const menu of menus) {
         if (menu === modelBtn || menu.contains(trailing)) continue;

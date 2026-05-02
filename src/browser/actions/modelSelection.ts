@@ -28,7 +28,7 @@ export async function ensureModelSelection(
         status: "option-not-found";
         hint?: { temporaryChat?: boolean; availableOptions?: string[] };
       }
-    | { status: "button-missing" }
+    | { status: "button-missing"; hint?: { temporaryChat?: boolean } }
     | undefined;
 
   switch (result?.status) {
@@ -53,7 +53,12 @@ export async function ensureModelSelection(
     }
     default: {
       await logDomFailure(Runtime, logger, "model-switcher-button");
-      throw new Error("Unable to locate the ChatGPT model selector button.");
+      const isTemporary = result?.hint?.temporaryChat ?? false;
+      const tempHint =
+        isTemporary && /\bpro\b/i.test(desiredModel)
+          ? " Temporary Chat mode is active; verify the model picker exposes Pro in the current account/UI."
+          : "";
+      throw new Error(`Unable to locate the ChatGPT model selector button.${tempHint}`);
     }
   }
 }
@@ -148,7 +153,7 @@ function buildModelSelectionExpression(
       if (MODEL_STRATEGY === 'current') {
         return { status: 'already-selected', label: 'current model' };
       }
-      return { status: 'button-missing' };
+      return { status: 'button-missing', hint: { temporaryChat: detectTemporaryChat() } };
     }
 
     const closeMenu = () => {

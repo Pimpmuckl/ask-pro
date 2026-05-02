@@ -362,10 +362,10 @@ function isTemporaryProUnavailableError(error: unknown): boolean {
   const message =
     error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   return (
-    (message.includes("unable to find model option matching") &&
-      message.includes("temporary chat mode is active") &&
-      message.includes("pro")) ||
-    message.includes("unable to locate the chatgpt model selector button")
+    message.includes("temporary chat mode is active") &&
+    message.includes("pro") &&
+    (message.includes("unable to find model option matching") ||
+      message.includes("unable to locate the chatgpt model selector button"))
   );
 }
 
