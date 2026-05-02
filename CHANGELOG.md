@@ -20,6 +20,7 @@
 - Add the minimal V1 CLI: `ask-pro "<question>"`, `--files`, `--dry-run`,
   `--resume`, `--status`, `--harvest`, `--copy`, and `--verbose`.
 - Add the `$ask-pro` Codex skill and plugin skeleton.
+- Add `ASK_PRO_AGENT_ID` support for per-agent persistent browser profiles.
 - Add generated response zip discovery, download, validation, extraction, and
   `PRO_OUTPUT_MANIFEST.json` metadata.
 - Add a non-resubmitting `--resume` harvest path for submitted, waiting, and

@@ -1,7 +1,19 @@
-import { describe, expect, test } from "vitest";
+import path from "node:path";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { resolveBrowserConfig } from "../../src/browser/config.js";
 import { CHATGPT_URL } from "../../src/browser/constants.js";
-import { defaultAskProBrowserProfileDir } from "../../src/browser/profilePaths.js";
+import {
+  askProAgentIdForManagedBrowserProfileDir,
+  askProBrowserProfileDirForAgentId,
+  defaultAskProBrowserProfileDir,
+  isAskProManagedBrowserProfileDir,
+  isAskProStatePath,
+  resolveAskProAgentId,
+} from "../../src/browser/profilePaths.js";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("resolveBrowserConfig", () => {
   test("returns defaults when config missing", () => {
@@ -50,6 +62,67 @@ describe("resolveBrowserConfig", () => {
     const resolved = resolveBrowserConfig({ manualLogin: true });
 
     expect(resolved.manualLoginProfileDir).toBe(defaultAskProBrowserProfileDir());
+  });
+
+  test("keeps ASK_PRO_AGENT_ID out of shared browser config defaults", () => {
+    vi.stubEnv("ASK_PRO_AGENT_ID", "review-t1-windows");
+    const resolved = resolveBrowserConfig({ manualLogin: true });
+
+    const agentId = resolveAskProAgentId();
+    expect(agentId).toMatch(/^review-t1-windows-[a-f0-9]{10}$/);
+    expect(resolved.manualLoginProfileDir).toBe(defaultAskProBrowserProfileDir());
+    expect(resolved.manualLoginProfileDir).not.toContain(path.join("agents", agentId!));
+  });
+
+  test("keeps colliding agent slugs isolated with a stable hash suffix", () => {
+    const first = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review-t1" });
+    const second = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review.t1" });
+    const reserved = resolveAskProAgentId({ ASK_PRO_AGENT_ID: "con" });
+
+    expect(first).toMatch(/^review-t1-[a-f0-9]{10}$/);
+    expect(second).toMatch(/^review.t1-[a-f0-9]{10}$/);
+    expect(first).not.toBe(second);
+    expect(reserved).toMatch(/^con-[a-f0-9]{10}$/);
+  });
+
+  test("rejects malformed stored agent ids before deriving a profile path", () => {
+    expect(() => askProBrowserProfileDirForAgentId("review-t1")).toThrow(
+      /stored ask-pro agent id is invalid/i,
+    );
+    expect(() => askProBrowserProfileDirForAgentId("../review-t1-59cd6bada6")).toThrow(
+      /stored ask-pro agent id is invalid/i,
+    );
+  });
+
+  test("recognizes only managed browser profile directories", () => {
+    const agentProfile = askProBrowserProfileDirForAgentId("review-t1-59cd6bada6");
+
+    expect(isAskProManagedBrowserProfileDir(defaultAskProBrowserProfileDir())).toBe(true);
+    expect(isAskProManagedBrowserProfileDir(agentProfile)).toBe(true);
+    expect(isAskProManagedBrowserProfileDir(path.join(path.dirname(agentProfile), "other"))).toBe(
+      false,
+    );
+    expect(isAskProManagedBrowserProfileDir(path.join(process.cwd(), "profile"))).toBe(false);
+    expect(askProAgentIdForManagedBrowserProfileDir(agentProfile)).toBe("review-t1-59cd6bada6");
+    expect(askProAgentIdForManagedBrowserProfileDir(defaultAskProBrowserProfileDir())).toBeNull();
+    expect(isAskProStatePath(path.join(path.dirname(agentProfile), "other"))).toBe(true);
+    expect(isAskProStatePath(path.join(process.cwd(), "profile"))).toBe(false);
+  });
+
+  test("rejects padded explicit agent ids instead of silently aliasing them", () => {
+    expect(() => resolveAskProAgentId({ ASK_PRO_AGENT_ID: " review-t1 " })).toThrow(
+      /must not start or end with whitespace/i,
+    );
+    expect(() => resolveAskProAgentId({ ASK_PRO_AGENT_ID: "   " })).toThrow(
+      /must not start or end with whitespace/i,
+    );
+    expect(() => resolveAskProAgentId({ ASK_PRO_AGENT_ID: "" })).toThrow(/must not be empty/i);
+    expect(() => resolveAskProAgentId({ ASK_PRO_AGENT_ID: "Review-T1" })).toThrow(
+      /lowercase letters/i,
+    );
+    expect(() => resolveAskProAgentId({ ASK_PRO_AGENT_ID: "review t1" })).toThrow(
+      /lowercase letters/i,
+    );
   });
 
   test("rejects temporary chat URLs when desiredModel is Pro", () => {

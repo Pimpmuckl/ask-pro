@@ -14,7 +14,10 @@ ask_pro-specific notes:
   may live under Configure / `Pro thinking effort`; temporary chat can be a
   top-right checkbox/toggle.
 - Project sessions live under `.ask-pro/sessions/<id>/`.
-- The persistent browser profile lives under `~/.agents/skills/ask-pro/browser-profile`.
+- The default persistent browser profile lives under
+  `~/.agents/skills/ask-pro/browser-profile`. Set `ASK_PRO_AGENT_ID` to give an
+  agent its own profile under
+  `~/.agents/skills/ask-pro/agents/<id>-<hash>/browser-profile`.
 - Generated zip contents are data only. Never execute generated scripts or files
   automatically.
 - Before release, run the fast local loop:

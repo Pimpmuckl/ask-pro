@@ -79,11 +79,18 @@ Debug logs must redact cookies and bearer tokens.
 
 ## Browser modes
 
-Preferred order:
+The `ask-pro` CLI uses deterministic managed profiles and locks for new runs.
+Resume may reattach to saved browser runtime metadata when a session already
+has it.
 
-1. attach to running Chrome if available and user-approved
-2. persistent automation profile at `~/.agents/skills/ask-pro/browser-profile`
-3. headful manual-login browser
-4. headless only after auth has been verified
+1. persistent automation profile at `~/.agents/skills/ask-pro/browser-profile`
+   for default runs, or
+   `~/.agents/skills/ask-pro/agents/<id>-<hash>/browser-profile` when
+   `ASK_PRO_AGENT_ID` is set
+2. headful manual-login browser
+3. headless only after auth has been verified
+
+Generic browser automation may attach to a user-approved running Chrome, but
+`ask-pro` should keep agent-scoped runs on the managed profile path.
 
 Headless is an optimization, not the auth bootstrap path.

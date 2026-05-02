@@ -1,7 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { BrowserAutomationError } from "../browser/errors.js";
-import { defaultAskProBrowserProfileDir } from "../browser/profilePaths.js";
+import {
+  askProAgentIdForManagedBrowserProfileDir,
+  askProBrowserProfileDirForAgentId,
+  defaultAskProBrowserProfileDir,
+  isAskProManagedBrowserProfileDir,
+  isAskProStatePath,
+  resolveAskProAgentId,
+} from "../browser/profilePaths.js";
 import { runBrowserMode, type BrowserRunResult } from "../browserMode.js";
 import { resumeBrowserSession } from "../browser/reattach.js";
 import type { BrowserLogger } from "../browser/types.js";
@@ -15,7 +22,6 @@ import {
 } from "./session.js";
 import { harvestLatestAssistantZip, writeResponseZipManifest } from "./responseZip.js";
 
-const ASK_PRO_BROWSER_PROFILE = defaultAskProBrowserProfileDir();
 const DEFAULT_TIMEOUT_MS = 180 * 60 * 1000;
 const MANUAL_LOGIN_WAIT_MS = 10 * 60 * 1000;
 
@@ -32,7 +38,9 @@ export async function runAskProBrowserSession({
 }: RunAskProBrowserSessionOptions): Promise<BrowserRunResult> {
   const paths = getAskProSessionPaths(cwd, sessionId);
   const prompt = await readAskProPrompt({ cwd, sessionId });
-  await fs.mkdir(ASK_PRO_BROWSER_PROFILE, { recursive: true });
+  const agentId = resolveAskProAgentId();
+  const browserProfile = askProBrowserProfileDirForAgentId(agentId);
+  await fs.mkdir(browserProfile, { recursive: true });
   await updateAskProStatus({ cwd, sessionId, status: "BROWSER_STARTING" });
 
   const logger = buildAskProBrowserLogger(cwd, sessionId, verbose);
@@ -48,7 +56,8 @@ export async function runAskProBrowserSession({
       ],
       config: {
         manualLogin: true,
-        manualLoginProfileDir: ASK_PRO_BROWSER_PROFILE,
+        attachRunning: false,
+        manualLoginProfileDir: browserProfile,
         manualLoginWaitMs: MANUAL_LOGIN_WAIT_MS,
         timeoutMs: DEFAULT_TIMEOUT_MS,
         inputTimeoutMs: 90_000,
@@ -71,7 +80,8 @@ export async function runAskProBrowserSession({
           metadata: {
             schemaVersion: 1,
             status: "running",
-            profileDir: ASK_PRO_BROWSER_PROFILE,
+            agentId,
+            profileDir: browserProfile,
             runtime,
           },
         });
@@ -94,7 +104,8 @@ export async function runAskProBrowserSession({
       metadata: {
         schemaVersion: 1,
         status: "completed",
-        profileDir: ASK_PRO_BROWSER_PROFILE,
+        agentId,
+        profileDir: browserProfile,
         runtime: browserResultToRuntime(result),
       },
     });
@@ -109,7 +120,8 @@ export async function runAskProBrowserSession({
         metadata: {
           schemaVersion: 1,
           status: "needs_user_auth",
-          profileDir: ASK_PRO_BROWSER_PROFILE,
+          agentId,
+          profileDir: browserProfile,
           reason: classifyBrowserError(error),
         },
       });
@@ -119,11 +131,7 @@ export async function runAskProBrowserSession({
         status: "NEEDS_USER_AUTH",
         reason: classifyBrowserError(error),
       });
-      throw new AskProNeedsAuthError(
-        sessionId,
-        ASK_PRO_BROWSER_PROFILE,
-        classifyBrowserError(error),
-      );
+      throw new AskProNeedsAuthError(sessionId, browserProfile, classifyBrowserError(error));
     }
 
     if (isAssistantTimeoutError(error)) {
@@ -154,6 +162,8 @@ export async function resumeAskProBrowserSession({
   const prompt = await readAskProPrompt({ cwd, sessionId });
   const logger = buildAskProBrowserLogger(cwd, sessionId, verbose);
   const metadata = await readBrowserMetadata(paths.browser);
+  const fallbackProfile = resolveResumeBrowserProfile(metadata);
+  const attachRunning = !metadata.agentId;
   if (!metadata.runtime) {
     throw new Error(`session ${sessionId} has no saved browser runtime metadata`);
   }
@@ -164,7 +174,8 @@ export async function resumeAskProBrowserSession({
       metadata.runtime,
       {
         manualLogin: true,
-        manualLoginProfileDir: metadata.profileDir ?? ASK_PRO_BROWSER_PROFILE,
+        attachRunning,
+        manualLoginProfileDir: fallbackProfile,
         timeoutMs: DEFAULT_TIMEOUT_MS,
         inputTimeoutMs: 90_000,
         url: metadata.url,
@@ -184,7 +195,7 @@ export async function resumeAskProBrowserSession({
         ...metadata,
         schemaVersion: 1,
         status: "completed",
-        profileDir: metadata.profileDir ?? ASK_PRO_BROWSER_PROFILE,
+        profileDir: fallbackProfile,
       },
     });
     await ensureResponseZipManifest(paths.dir);
@@ -197,11 +208,7 @@ export async function resumeAskProBrowserSession({
         status: "NEEDS_USER_AUTH",
         reason: classifyBrowserError(error),
       });
-      throw new AskProNeedsAuthError(
-        sessionId,
-        metadata.profileDir ?? ASK_PRO_BROWSER_PROFILE,
-        classifyBrowserError(error),
-      );
+      throw new AskProNeedsAuthError(sessionId, fallbackProfile, classifyBrowserError(error));
     }
     await updateAskProStatus({
       cwd,
@@ -229,6 +236,44 @@ async function ensureResponseZipManifest(sessionDir: string): Promise<void> {
       },
     });
   }
+}
+
+function resolveResumeBrowserProfile(metadata: AskProBrowserMetadata): string {
+  const agentProfile = resolveStoredAgentProfile(metadata.agentId);
+  const profileDir = metadata.profileDir;
+  const profileAgentId = profileDir ? askProAgentIdForManagedBrowserProfileDir(profileDir) : null;
+  if (profileAgentId && profileAgentId !== metadata.agentId) {
+    throw new Error("Stored ask-pro agent profile does not match stored agent id.");
+  }
+  if (profileAgentId && agentProfile) {
+    return profileDir!;
+  }
+  if (
+    profileDir &&
+    !profileAgentId &&
+    !agentProfile &&
+    isAskProManagedBrowserProfileDir(profileDir)
+  ) {
+    return profileDir;
+  }
+  if (profileDir && isAskProStatePath(profileDir)) {
+    throw new Error("Stored ask-pro profile path is invalid.");
+  }
+  if (hasLegacyNonManagedProfile(metadata)) return metadata.profileDir!;
+
+  if (agentProfile) return agentProfile;
+  return defaultAskProBrowserProfileDir();
+}
+
+function hasLegacyNonManagedProfile(metadata: AskProBrowserMetadata): boolean {
+  return Boolean(
+    metadata.profileDir && !metadata.agentId && !isAskProStatePath(metadata.profileDir),
+  );
+}
+
+function resolveStoredAgentProfile(agentId: string | null | undefined): string | null {
+  if (!agentId) return null;
+  return askProBrowserProfileDirForAgentId(agentId);
 }
 
 export class AskProNeedsAuthError extends Error {
@@ -317,6 +362,7 @@ interface AskProBrowserMetadata {
   schemaVersion?: number;
   status?: string;
   profileDir?: string;
+  agentId?: string | null;
   url?: string;
   runtime?: {
     chromePid?: number;

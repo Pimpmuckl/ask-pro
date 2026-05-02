@@ -18,6 +18,7 @@ ask-pro-*.tgz
 ask-pro-*.tgz.sha1
 ask-pro-*.tgz.sha256
 /.claude
+.review-suite/
 
 progress.md
 findings.md

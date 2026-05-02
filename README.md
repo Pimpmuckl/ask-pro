@@ -119,6 +119,23 @@ plugin installer or marketplace source.
 ~/.agents/skills/ask-pro/browser-profile
 ```
 
+For independent agents, set `ASK_PRO_AGENT_ID` before running `ask-pro`. Use a
+lowercase id containing only letters, numbers, `.`, `_`, or `-`. Each agent id
+gets its own persistent profile and profile lock:
+
+```powershell
+$env:ASK_PRO_AGENT_ID = "review-t1"
+ask-pro "Review this migration plan."
+Remove-Item Env:ASK_PRO_AGENT_ID
+```
+
+That profile lives under an agent-specific directory. The final directory name
+includes a stable hash suffix so similar agent names cannot collide:
+
+```text
+~/.agents/skills/ask-pro/agents/review-t1-<hash>/browser-profile
+```
+
 On the first browser run, ChatGPT may ask you to sign in, complete MFA, or clear
 a browser challenge. Authentication is human-controlled: `ask-pro` never asks
 for passwords, MFA codes, recovery codes, cookies, or raw auth tokens.
