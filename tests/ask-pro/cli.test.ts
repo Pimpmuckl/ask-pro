@@ -56,6 +56,7 @@ describe("ask-pro cli", () => {
       "utf8",
     );
     expect(JSON.parse(statusRaw)).toMatchObject({ status: "DRY_RUN_COMPLETE", dryRun: true });
+    expect(JSON.parse(statusRaw).resumeCommand).not.toContain("--no-temporary");
   }, 30000);
 
   test("preserves extended and temporary flags in dry-run resume command", async () => {

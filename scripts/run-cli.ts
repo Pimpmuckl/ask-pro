@@ -7,7 +7,10 @@ const rawArgs = process.argv.slice(2);
 const args: string[] = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "..");
+const repoRoot =
+  path.basename(path.dirname(here)) === "dist"
+    ? path.resolve(here, "../..")
+    : path.resolve(here, "..");
 const cliEntry = path.join(here, "../bin/ask-pro-cli.js");
 
 const child = spawn(process.execPath, ["--", cliEntry, ...args], {

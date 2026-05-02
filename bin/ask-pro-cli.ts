@@ -283,9 +283,15 @@ function mergeStatusOptions(
   options: AskProOptions,
   status: { thinkingTime?: "extended"; temporary?: boolean },
 ): AskProOptions {
+  const temporary =
+    options.temporary !== undefined
+      ? options.temporary
+      : status.temporary === true
+        ? true
+        : undefined;
   return {
     ...options,
     extended: options.extended === true || status.thinkingTime === "extended",
-    temporary: options.temporary !== undefined ? options.temporary : status.temporary === true,
+    temporary,
   };
 }
