@@ -484,6 +484,7 @@ async function readBrowserPreflightForSession(
     profile_path: profileDir ? collapseHome(profileDir) : undefined,
     chrome: chromeMode(metadata),
     language: typeof metadata.acceptLanguage === "string" ? metadata.acceptLanguage : undefined,
+    conversation_url: recoverableConversationUrl(metadata),
   });
 }
 
@@ -513,10 +514,29 @@ function chromeMode(metadata: BrowserMetadata): string | undefined {
   return undefined;
 }
 
+function recoverableConversationUrl(metadata: BrowserMetadata): string | undefined {
+  if (metadata.temporary === true) return undefined;
+  const runtime = browserRuntimeMetadata(metadata.runtime);
+  const candidates = [runtime.tabUrl, metadata.url].filter(
+    (value): value is string => typeof value === "string",
+  );
+  return candidates.find(isConversationUrl);
+}
+
+function browserRuntimeMetadata(value: unknown): { tabUrl?: string } {
+  return value !== null && typeof value === "object" ? (value as { tabUrl?: string }) : {};
+}
+
+function isConversationUrl(value: string): boolean {
+  return /^https:\/\/chatgpt\.com\/c\/[a-z0-9-]+/i.test(value);
+}
+
 interface BrowserMetadata {
   status?: string;
   profileDir?: string;
   agentId?: string | null;
+  temporary?: boolean;
+  url?: string;
   acceptLanguage?: string;
   chromeMode?: string;
   runtime?: unknown;

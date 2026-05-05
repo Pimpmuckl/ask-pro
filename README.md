@@ -41,11 +41,17 @@ ask-pro "Review the staged implementation plan."
 
 Requires Node 24+.
 
-If `ask-pro` is not on `PATH`, agents can still use the source checkout:
+If `ask-pro` is not on `PATH`, agents should use the cached plugin runner, not
+the mutable development checkout. The cached runner is refreshed by
+`pnpm run plugin:refresh` and represents the last synced plugin version:
 
 ```powershell
-npm exec --yes pnpm@10.33.2 -- --dir C:\Code\ask-pro start -- "Review the staged implementation plan."
+node "$env:USERPROFILE\.codex\plugins\cache\jonat-local\ask-pro\local\scripts\run-cached-cli.mjs" -- --cwd C:\Code\jjagentskills --no-temporary --prompt-file .\question.md --files plugins\review-suite
 ```
+
+`--files` must resolve inside the project cwd. For cross-repo cached-runner
+calls, always pass `--cwd <target-repo-root>` and keep `--files` repo-relative
+to that target repo.
 
 ### Codex Plugin
 
@@ -123,8 +129,9 @@ pnpm run plugin:refresh
 
 The cache under `~/.codex/plugins/cache/...` is generated install state. Do not
 edit or hand-copy files there; refresh the plugin and restart or reload Codex.
-The plugin cache intentionally contains docs and skills only; run the CLI from
-the source checkout or a linked `ask-pro` binary.
+The plugin cache contains the agent-facing docs plus a built CLI snapshot for
+fallback calls. Agents should use that cached runner instead of `C:\Code\ask-pro`
+so development work in this checkout cannot affect active callers before sync.
 
 An eventual `npm install -g ask_pro` will install the `ask-pro` CLI only. It
 will not automatically register the Codex plugin unless Codex adds an npm-based
@@ -179,6 +186,8 @@ ask-pro --extended "Review this architecture decision."
 
 Use `--extended` for difficult architecture questions, production-risk reviews,
 and implementation-plan packages where a multi-hour wait is acceptable.
+When ChatGPT labels the model row simply as `Pro`, `ask-pro` treats that as the
+current latest Pro target and only uses exact version strings as hints.
 
 By default, fresh runs open ChatGPT Temporary Chat first:
 
@@ -202,6 +211,15 @@ before harvest. To force a run or retry outside Temporary Chat, use
 ```bash
 ask-pro --no-temporary --resume <session-id>
 ```
+
+For repo advisories, large bundles, review rounds, or anything where recovery
+matters, prefer `--no-temporary` from the start. Temporary Chat is best reserved
+for cases where ephemeral ChatGPT history matters more than resume/recovery.
+
+While Pro is thinking, leave the launched Chrome window alone. ChatGPT can focus
+its stop control after submit; `ask-pro` moves focus to a harmless element when
+it can, but human keystrokes or clicks in the run window can still cancel a live
+answer.
 
 ## Commands
 
@@ -232,7 +250,7 @@ Examples:
 ```bash
 ask-pro --dry-run --files "src/**/*.ts" "Audit this slice for hidden coupling."
 ask-pro --files src/ask-pro/session.ts --files tests/ask-pro "Find missing tests."
-ask-pro --prompt-file question.md --files .\src
+ask-pro --no-temporary --prompt-file question.md --files .\src
 ask-pro --artifacts --prompt-file implementation-plan.md --files src
 ask-pro --status
 ask-pro --harvest 2026-05-01T165438-return-exactly-ask-pro-browser-login-ready
@@ -242,6 +260,13 @@ Use `--prompt-file` for multiline prompts. This avoids shell quoting issues and
 keeps the exact question in `PROMPT.md`. `--files` accepts files, directories,
 and globs; Windows backslash paths and absolute paths inside the project cwd are
 normalized into stable relative manifest paths.
+
+Add `.ask-pro/` to consuming repos' `.gitignore`. Session files are local run
+artifacts and should not show up in normal repo diffs.
+
+Keep context bundles focused: relevant source files, focused tests, docs that
+define the contract, known recent changes, and validation status. Avoid
+whole-repo bundles unless the question is explicitly broad architecture.
 
 ## Agent Output
 
@@ -279,14 +304,28 @@ ask_pro
 ```
 
 When known, normal status records may also include `profile`, `profile_path`,
-`chrome`, and `language`. These are diagnostic hints for agents deciding whether
-a run is using the shared profile, an isolated agent profile, a saved DevTools
-session, or the expected English browser steering.
+`chrome`, `language`, and `conversation_url`. These are diagnostic hints for
+agents deciding whether a run is using the shared profile, an isolated agent
+profile, a saved DevTools session, the expected English browser steering, or a
+recoverable non-temporary ChatGPT conversation.
 
 Generated response zips are harvested when ChatGPT provides them. The wrapper no
 longer asks for a zip by default; pass `--artifacts` / `--response-zip` only
 when a structured implementation bundle is useful. If no zip is available, use
 `ask-pro --harvest <session-id>` to print the markdown answer.
+
+Completed sessions close the isolated run tab/browser by design. If the capture
+looks like a deferred-work preamble instead of a real answer, `ask-pro` marks the
+session `INCOMPLETE_ANSWER` / `preamble_without_artifacts` and may leave the
+browser open for debugging. Do not treat this as a completed consult. Try
+resume/harvest if recoverable; otherwise rerun with `--no-temporary`, a tighter
+bundle, and a more direct prompt.
+
+Default advisory prompt shape:
+
+```text
+Return final markdown only. Do not answer with a preamble. Do not produce an implementation package. Rank findings by severity. Treat attached bundle as authoritative. Call out uncertainty.
+```
 
 ## Sessions
 

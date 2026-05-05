@@ -715,7 +715,6 @@ function buildResponseObserverExpression(
     const captureViaObserver = () =>
       new Promise((resolve, reject) => {
         const deadline = Date.now() + ${timeoutMs};
-        let stopInterval = null;
         let timeoutId = null;
         let cleanedUp = false;
         let observer = null;
@@ -724,10 +723,6 @@ function buildResponseObserverExpression(
         const cleanup = () => {
           if (cleanedUp) return;
           cleanedUp = true;
-          if (stopInterval) {
-            clearInterval(stopInterval);
-            stopInterval = null;
-          }
           if (timeoutId) {
             clearTimeout(timeoutId);
             timeoutId = null;
@@ -770,20 +765,6 @@ function buildResponseObserverExpression(
 
         observer = new MutationObserver(observerCallback);
         observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-
-        stopInterval = setInterval(() => {
-          if (cleanedUp) return;
-          const stop = document.querySelector(STOP_SELECTOR);
-          if (!stop) {
-            return;
-          }
-          const isStopButton =
-            stop.getAttribute('data-testid') === 'stop-button' || stop.getAttribute('aria-label')?.toLowerCase()?.includes('stop');
-          if (isStopButton) {
-            return;
-          }
-          dispatchClickSequence(stop);
-        }, 500);
 
         timeoutId = setTimeout(() => {
           cleanup();
@@ -1410,3 +1391,8 @@ function cleanAssistantText(text: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+// biome-ignore lint/style/useNamingConvention: test-only export used in vitest suite
+export const __test__ = {
+  buildResponseObserverExpression,
+};

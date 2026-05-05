@@ -306,6 +306,102 @@ describe("ask-pro cli", () => {
     expect(stdout).toContain('  language: "en-US,en"\n');
   }, 30000);
 
+  test("prints recoverable non-temporary conversation url when known", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-browser-url-"));
+    tempDirs.push(cwd);
+
+    const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
+    const tsxLoader = pathToFileURL(
+      path.join(process.cwd(), "node_modules", "tsx", "dist", "esm", "index.mjs"),
+    ).href;
+    await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--dry-run", "--no-temporary", "Review this."],
+      {
+        cwd,
+      },
+    );
+    const sessions = await fs.readdir(path.join(cwd, ".ask-pro", "sessions"));
+    const statusPath = path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "status.json");
+    const status = JSON.parse(await fs.readFile(statusPath, "utf8"));
+    await fs.writeFile(
+      path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "browser.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          status: "running",
+          temporary: false,
+          runtime: { tabUrl: "https://chatgpt.com/c/recoverable-thread" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await fs.writeFile(
+      statusPath,
+      `${JSON.stringify({ ...status, status: "WAITING", temporary: false }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const { stdout, stderr } = await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--status"],
+      { cwd },
+    );
+
+    expect(stderr).toBe("");
+    expect(stdout).toContain('  conversation_url: "https://chatgpt.com/c/recoverable-thread"\n');
+  }, 30000);
+
+  test("omits conversation url for temporary chat metadata", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-temporary-url-"));
+    tempDirs.push(cwd);
+
+    const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
+    const tsxLoader = pathToFileURL(
+      path.join(process.cwd(), "node_modules", "tsx", "dist", "esm", "index.mjs"),
+    ).href;
+    await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--dry-run", "--temporary", "Review this."],
+      {
+        cwd,
+      },
+    );
+    const sessions = await fs.readdir(path.join(cwd, ".ask-pro", "sessions"));
+    const statusPath = path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "status.json");
+    const status = JSON.parse(await fs.readFile(statusPath, "utf8"));
+    await fs.writeFile(
+      path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "browser.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          status: "running",
+          temporary: true,
+          runtime: { tabUrl: "https://chatgpt.com/c/temporary-thread" },
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await fs.writeFile(
+      statusPath,
+      `${JSON.stringify({ ...status, status: "WAITING", temporary: true }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const { stdout, stderr } = await execFileAsync(
+      process.execPath,
+      ["--import", tsxLoader, cli, "--status"],
+      { cwd },
+    );
+
+    expect(stderr).toBe("");
+    expect(stdout).not.toContain("conversation_url");
+  }, 30000);
+
   test("does not infer Chrome mode from runtime metadata alone", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-browser-runtime-"));
     tempDirs.push(cwd);

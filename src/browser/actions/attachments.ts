@@ -1472,7 +1472,7 @@ export async function waitForUserTurnAttachments(
   }
 
   if (!sawAttachmentUi) {
-    logger?.("Sent user message did not expose attachment UI; skipping attachment verification.");
+    logger?.("Sent user message attachment UI was not visible; skipping attachment verification.");
     return false;
   }
 

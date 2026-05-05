@@ -29,7 +29,7 @@ import { defaultAskProBrowserProfileDir } from "./profilePaths.js";
 import { applyPageLanguageOverrides, seedChromeProfileLanguage } from "./language.js";
 import { syncCookies } from "./cookies.js";
 import { CHATGPT_URL } from "./constants.js";
-import { cleanupStaleProfileState } from "./profileState.js";
+import { cleanupStaleProfileState, verifyDevToolsReachable } from "./profileState.js";
 import { readDevToolsActivePortInfo } from "./detect.js";
 import {
   pickTarget,
@@ -90,7 +90,11 @@ export async function resumeBrowserSession(
   }
 
   try {
-    const liveRuntime = (await refreshAttachRuntime(runtime).catch(() => runtime)) ?? runtime;
+    const liveRuntime = await refreshAttachRuntime(runtime, logger).catch(() => runtime);
+    if (!liveRuntime.chromePort && !liveRuntime.chromeBrowserWSEndpoint) {
+      logger("Saved Chrome runtime metadata is stale; reopening browser to locate the session.");
+      return recoverWithRelaunchMode(runtime, config);
+    }
     const host = liveRuntime.chromeHost ?? "127.0.0.1";
     const port =
       liveRuntime.chromePort ?? inferPortFromBrowserWSEndpoint(liveRuntime.chromeBrowserWSEndpoint);
@@ -216,7 +220,8 @@ export async function resumeBrowserSession(
 
 async function refreshAttachRuntime(
   runtime: BrowserRuntimeMetadata,
-): Promise<BrowserRuntimeMetadata | null> {
+  logger: BrowserLogger,
+): Promise<BrowserRuntimeMetadata> {
   if (!runtime.chromeProfileRoot) {
     return runtime;
   }
@@ -226,6 +231,25 @@ async function refreshAttachRuntime(
   });
   if (!activePort) {
     return runtime;
+  }
+  const probe = await verifyDevToolsReachable({
+    port: activePort.port,
+    host,
+    attempts: 1,
+    timeoutMs: 750,
+  });
+  if (!probe.ok) {
+    logger(
+      `DevTools port ${activePort.port} unreachable (${probe.error}); ignoring stale profile runtime metadata.`,
+    );
+    await cleanupStaleProfileState(runtime.chromeProfileRoot, logger, {
+      lockRemovalMode: "never",
+    }).catch(() => undefined);
+    return {
+      ...runtime,
+      chromePort: undefined,
+      chromeBrowserWSEndpoint: undefined,
+    };
   }
   return {
     ...runtime,

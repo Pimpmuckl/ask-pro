@@ -1,5 +1,10 @@
 import type { ChromeClient } from "../types.js";
-import { INPUT_SELECTORS, SEND_BUTTON_SELECTORS, UPLOAD_STATUS_SELECTORS } from "../constants.js";
+import {
+  INPUT_SELECTORS,
+  SEND_BUTTON_SELECTORS,
+  STOP_BUTTON_SELECTOR,
+  UPLOAD_STATUS_SELECTORS,
+} from "../constants.js";
 import { buildClickDispatcher } from "./domEvents.js";
 
 export type ComposerSendButtonState = "ready" | "disabled" | "missing";
@@ -57,6 +62,7 @@ function matchesExpected(raw: string, expected: string): boolean {
 function buildComposerScopeHelpersExpression(): string {
   return `
     const sendSelectors = ${JSON.stringify(SEND_BUTTON_SELECTORS)};
+    const stopSelector = ${JSON.stringify(STOP_BUTTON_SELECTOR)};
     const promptSelectors = ${JSON.stringify(INPUT_SELECTORS)};
     const attachmentSelectors = [
       'input[type="file"]',
@@ -92,6 +98,16 @@ function buildComposerScopeHelpersExpression(): string {
       if (rect.width <= 0 || rect.height <= 0) return false;
       const style = window.getComputedStyle(node);
       return style.display !== 'none' && style.visibility !== 'hidden';
+    };
+    const isStopControl = (node) => {
+      if (!(node instanceof HTMLElement)) return false;
+      const label = [
+        node.getAttribute('data-testid') ?? '',
+        node.getAttribute('aria-label') ?? '',
+        node.getAttribute('title') ?? '',
+        node.textContent ?? '',
+      ].join(' ').toLowerCase();
+      return node.matches(stopSelector) || label.includes('stop') || label.includes('cancel');
     };
     const findPromptNode = () => {
       for (const selector of promptSelectors) {
@@ -153,7 +169,8 @@ function buildComposerScopeHelpersExpression(): string {
         }
         if (candidates.length > 0) break;
       }
-      return candidates.find((node) => isVisible(node)) ?? candidates[0] ?? null;
+      const sendCandidates = candidates.filter((node) => !isStopControl(node));
+      return sendCandidates.find((node) => isVisible(node)) ?? sendCandidates[0] ?? null;
     };
     const collectAttachmentNodes = () => {
       const nodes = [];
@@ -310,6 +327,7 @@ export function buildComposerSendClickExpression(): string {
     ${buildComposerScopeHelpersExpression()}
     const button = findSendButton();
     if (!button) return 'missing';
+    if (isStopControl(button)) return 'stop-button';
     const style = window.getComputedStyle(button);
     const disabled =
       button.hasAttribute('disabled') ||

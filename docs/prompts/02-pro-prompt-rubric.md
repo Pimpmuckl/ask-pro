@@ -4,6 +4,8 @@ Use this only as guidance. The agent should write the final prompt itself.
 
 A good `$ask-pro` prompt asks ChatGPT Pro to:
 
+- return final markdown only
+- avoid preambles or promises to inspect later
 - inspect the attached manifest/context
 - answer the exact architectural/backend question
 - recommend one concrete approach
@@ -13,12 +15,14 @@ A good `$ask-pro` prompt asks ChatGPT Pro to:
 - identify failure modes
 - provide a test plan
 - identify what not to do
-- create `ask-pro-response.zip` if file generation is available
+- return inline markdown unless an implementation bundle is explicitly needed
 
 ## Suggested snippet
 
 ```text
 You are reviewing a hard backend/architecture decision for a coding agent.
+
+Return final markdown only. Do not answer with a preamble. Do not produce an implementation package. Rank findings by severity. Treat attached bundle as authoritative. Call out uncertainty.
 
 Task:
 <what we are trying to build/fix>
@@ -49,7 +53,7 @@ Please return:
 8. things the coding agent should not do
 9. final concise instruction to the coding agent
 
-If file generation is available, also create a downloadable zip named ask-pro-response.zip containing IMPLEMENTATION_PLAN.md, TASKS.json, TEST_PLAN.md, RISK_REGISTER.md, FILES_TO_EDIT.md, and REPO_CONTEXT_USED.md. If you cannot create a zip, return the same content in markdown sections.
+For implementation-package prompts only: if file generation is available, also create a downloadable zip named ask-pro-response.zip containing IMPLEMENTATION_PLAN.md, TASKS.json, TEST_PLAN.md, RISK_REGISTER.md, FILES_TO_EDIT.md, and REPO_CONTEXT_USED.md. If you cannot create a zip, return the same content in markdown sections.
 ```
 
 Never send a vague prompt like “what do you think?” without context.

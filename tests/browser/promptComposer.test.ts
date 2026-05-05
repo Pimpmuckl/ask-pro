@@ -15,4 +15,12 @@ describe("prompt composer actions", () => {
     expect(evaluate).toHaveBeenCalledTimes(1);
     expect(logger).toHaveBeenCalledWith("Moved focus away from ChatGPT stop button");
   });
+
+  test("refuses Enter fallback while stop control is visible", async () => {
+    const evaluate = vi.fn(async () => ({ result: { value: false } }));
+
+    const canSubmit = await __test__.canSubmitPromptViaEnter({ evaluate } as never);
+
+    expect(canSubmit).toBe(false);
+  });
 });

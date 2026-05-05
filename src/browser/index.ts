@@ -772,7 +772,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
           );
           if (!verified) {
             logger(
-              "Sent user message did not expose attachment UI after upload; continuing after confirmed upload and send.",
+              "Sent user message attachment UI was not visible after upload; continuing because upload and send completed.",
             );
           } else {
             logger("Verified attachments present on sent user message");

@@ -1,10 +1,11 @@
 # Pro answer zip contract
 
-`$ask-pro` should prefer a generated implementation bundle from ChatGPT Pro, but must not require one.
+`$ask-pro` defaults to inline markdown answers. Generated implementation bundles
+are opt-in for prompts that explicitly need file packages.
 
 ## Desired behavior
 
-The prompt asks ChatGPT Pro:
+When `--artifacts` / `--response-zip` is set, the wrapper adds a request like:
 
 ```text
 If file generation is available, create a downloadable zip named ask-pro-response.zip.

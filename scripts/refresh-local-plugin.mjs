@@ -56,14 +56,42 @@ assertInside(
   "Resolved plugin cache path is outside Codex plugin cache",
 );
 
+const requiredDistEntry = path.join(repoRoot, "dist", "bin", "ask-pro-cli.js");
+if (!(await exists(requiredDistEntry))) {
+  throw new Error("dist is missing. Run `pnpm run build` before refreshing the plugin cache.");
+}
+const repoNodeModules = path.join(repoRoot, "node_modules");
+if (!(await exists(repoNodeModules))) {
+  throw new Error(
+    "node_modules is missing. Run `pnpm install` before refreshing the plugin cache.",
+  );
+}
+
+await removeNodeModulesLink(path.join(targetRoot, "node_modules"));
 await fs.rm(targetRoot, { recursive: true, force: true });
 await fs.mkdir(targetRoot, { recursive: true });
 
-for (const item of [".codex-plugin", "skills", "references", "README.md", "LICENSE"]) {
+for (const item of [
+  ".codex-plugin",
+  "skills",
+  "references",
+  "README.md",
+  "LICENSE",
+  "package.json",
+  "dist",
+]) {
   const source = path.join(repoRoot, item);
   if (!(await exists(source))) continue;
   await fs.cp(source, path.join(targetRoot, item), { recursive: true, force: true });
 }
+
+await fs.mkdir(path.join(targetRoot, "scripts"), { recursive: true });
+await fs.cp(
+  path.join(repoRoot, "scripts", "run-cached-cli.mjs"),
+  path.join(targetRoot, "scripts", "run-cached-cli.mjs"),
+  { force: true },
+);
+await fs.symlink(repoNodeModules, path.join(targetRoot, "node_modules"), "junction");
 
 console.log("Refreshed local Codex plugin cache:");
 console.log(`  source: ${repoRoot}`);
@@ -101,6 +129,17 @@ async function exists(filePath) {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function removeNodeModulesLink(filePath) {
+  try {
+    const stat = await fs.lstat(filePath);
+    if (stat.isSymbolicLink()) {
+      await fs.unlink(filePath);
+    }
+  } catch {
+    // Missing or non-removable links are handled by the full target cleanup.
   }
 }
 

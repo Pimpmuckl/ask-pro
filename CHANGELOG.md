@@ -9,12 +9,16 @@
   browser progress on stderr/session logs.
 - Add compact browser preflight fields to agent telemetry when known, including
   profile mode/path, Chrome mode, and language steering.
+- Surface recoverable non-temporary ChatGPT `conversation_url` in agent
+  telemetry when known.
 - Add `--prompt-file` for multiline prompts and stdin handoffs without fragile
   shell quoting.
 - Add `--artifacts` / `--response-zip` as the explicit response bundle opt-in.
 - Normalize `--files` inputs from Windows backslash paths, absolute paths inside
   the project cwd, and directory paths into stable relative manifest paths, with
   realpath containment checks.
+- Treat ChatGPT's visible bare `Pro` picker label as the current Pro target
+  instead of requiring a dated model label.
 - Stop adding the generated response zip request to every wrapper prompt; agents
   should ask for `ask-pro-response.zip` only when the task needs that bundle.
 - Mark suspicious preamble-only answers without valid artifacts as
@@ -30,6 +34,8 @@
 - Trim runtime dependencies to the ask-pro browser closure.
 - Document manual clone/link plus Codex marketplace installation instead of
   treating npm as the current install path.
+- Recommend `--no-temporary` for repo advisories, review rounds, large bundles,
+  and recoverability-sensitive runs.
 
 ### Added
 
@@ -39,7 +45,10 @@
 - Add the `$ask-pro` Codex skill and plugin skeleton.
 - Add `pnpm run plugin:refresh` to refresh the local Codex plugin cache from
   the repo source without hand-copying generated cache files.
-- Document the source-checkout CLI fallback for agents when `ask-pro` is not on
+- Document the cached plugin CLI fallback for agents when `ask-pro` is not on
+  `PATH`.
+- Add a cached plugin CLI runner so agents can use the last synced plugin
+  snapshot instead of the mutable development checkout when `ask-pro` is not on
   `PATH`.
 - Add `ASK_PRO_AGENT_ID` support for per-agent persistent browser profiles.
 - Clarify that `ASK_PRO_AGENT_ID` should be unset for ordinary single-agent
@@ -76,6 +85,8 @@
   resume paths.
 - Browser: make auth resume reopen the managed submission when login happened
   before runtime metadata was saved.
+- Browser: ignore stale saved DevTools profile metadata during resume when the
+  advertised port is no longer reachable, then relaunch to recover the session.
 - Browser: preserve requested Extended Pro thinking across auth and submitted
   session resume paths.
 - CLI: persist requested `--extended` and `--temporary` modes in session status
@@ -90,17 +101,21 @@
   treating the inactive toggle as an active temporary chat.
 - Browser: preserve successful sends when ChatGPT does not immediately render
   sent-message attachment UI.
+- Browser: move focus away from ChatGPT's stop control after submit when
+  possible, so accidental human input is less likely to cancel a Pro run.
+- Browser: remove automation paths that could activate ChatGPT's stop control
+  while waiting for a Pro response.
 - Browser: prefer ChatGPT's `Copy response` action over `Copy message` when
   capturing browser markdown.
 - Browser: stop treating transient reasoning placeholders as completed answers.
 - Browser: gracefully close completed ask-pro Chrome runs while keeping
-  incomplete/reattachable runs available.
+  incomplete/reattachable runs available, and keep incomplete-answer browser
+  sessions open for temporary debugging.
 - Plugin: normalize the Codex plugin identity to `ask-pro`, add required YAML
   frontmatter, and tighten the skill text into a concise agent runbook.
 - Plugin: make `pnpm run plugin:refresh` use a Node entrypoint so the package
   script is not Windows-shell-specific.
-- CLI: preserve the source-checkout `pnpm start` launcher in generated resume
-  commands.
+- CLI: preserve the active cached/source launcher in generated resume commands.
 
 ### Docs
 

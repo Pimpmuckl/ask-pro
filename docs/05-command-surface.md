@@ -52,6 +52,7 @@ ask-pro "<question>"
 ask-pro --dry-run "<question>"
 ask-pro --prompt-file <path>
 ask-pro --artifacts --prompt-file <path>
+ask-pro --no-temporary --prompt-file <path>
 ask-pro --resume [session-id]
 ask-pro --status [session-id]
 ask-pro --harvest [session-id]
@@ -72,14 +73,20 @@ Use `--prompt-file <path>` for multiline prompts; `--prompt-file -` reads stdin.
 accepts files, directories, and globs. Windows absolute paths inside the project
 cwd and backslash paths are normalized to relative POSIX manifest paths. Prefer
 `--cwd <repo-root>` plus repo-relative `--files` for cross-repo work.
+In cached-runner fallback mode, this is required whenever the files belong to a
+different repo than the cached plugin runner.
 
 Do not expose broad model/preset complexity in the normal path. `--extended` is
 the single explicit long-thinking opt-in for hard architecture, production-risk,
 and implementation-plan package questions where a multi-hour wait is acceptable.
+If the ChatGPT picker shows a bare `Pro` label, treat it as the current latest
+Pro target; exact model-version labels are hints, not a required UI contract.
 Fresh runs try Temporary Chat by default and automatically retry in normal
 ChatGPT if the current account hides Pro models there. `--temporary` makes
 Temporary Chat strict and disables that fallback; `--no-temporary` starts or
-resumes the session in normal ChatGPT.
+resumes the session in normal ChatGPT. For repo advisories, review rounds, large
+bundles, and recoverability-sensitive work, agents should prefer
+`--no-temporary`.
 
 ## Default behavior
 
@@ -110,6 +117,14 @@ The wrapper prompt does not request generated response zips by default. Agents
 should pass `--artifacts` / `--response-zip` only when the task needs an
 implementation bundle.
 
+Terminal states:
+
+- `COMPLETED`: harvest/read the answer; the isolated browser may already be
+  closed.
+- `INCOMPLETE_ANSWER`: the captured answer looks like a preamble/deferred-work
+  stub. Do not treat it as final; resume, inspect, or rerun with a tighter
+  prompt, `--no-temporary`, and a smaller bundle.
+
 Status/create/auth/error records should stay tiny and action-oriented:
 
 ```toon
@@ -138,8 +153,10 @@ ask_pro
 ```
 
 When known, status records include compact browser preflight fields:
-`profile` (`shared`, `agent`, or `legacy`), `profile_path`, `chrome`, and
-`language`. Keep deeper browser diagnostics in stderr/session logs, not stdout.
+`profile` (`shared`, `agent`, or `legacy`), `profile_path`, `chrome`,
+`language`, and `conversation_url`. Keep deeper browser diagnostics in
+stderr/session logs, not stdout. `conversation_url` is only emitted for
+recoverable non-temporary ChatGPT conversation URLs.
 
 Errors are structured on stdout with a non-zero exit:
 

@@ -7,8 +7,8 @@ Agent invokes $ask-pro
 → ask-pro bundles relevant repo context
 → ask-pro drives ChatGPT Pro in the browser
 → human authenticates when needed
-→ Pro answers, preferably with a downloadable implementation zip
-→ ask-pro harvests the answer/zip
+→ Pro answers in markdown, or with an opt-in implementation zip
+→ ask-pro harvests the answer and any generated zip
 → agent turns it into an implementation plan
 ```
 
@@ -44,8 +44,8 @@ and get a session containing:
 - Auth is user-controlled.
 - The calling agent writes the prompt.
 - `ask-pro` validates and transports the prompt/context.
-- Generated implementation zip is preferred but never required.
-- Markdown fallback must always work.
+- Markdown answers are the default.
+- Generated implementation zips are opt-in and never required.
 
 ## Browser target
 

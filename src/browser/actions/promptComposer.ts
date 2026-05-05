@@ -416,6 +416,17 @@ export async function submitPrompt(
     deps.inputTimeoutMs ?? undefined,
   );
   if (!clicked) {
+    const canSubmitViaEnter = await canSubmitPromptViaEnter(runtime);
+    if (!canSubmitViaEnter) {
+      await logDomFailure(runtime, logger, "unsafe-enter-submit");
+      throw new BrowserAutomationError(
+        "Refusing Enter-key submit because ChatGPT is showing a stop control or the composer is not focused.",
+        {
+          stage: "submit-prompt",
+          code: "unsafe-enter-submit",
+        },
+      );
+    }
     await input.dispatchKeyEvent({
       type: "keyDown",
       ...ENTER_KEY_EVENT,
@@ -495,6 +506,33 @@ async function defocusStopButtonAfterSubmit(
     }
     return;
   }
+}
+
+async function canSubmitPromptViaEnter(Runtime: ChromeClient["Runtime"]): Promise<boolean> {
+  const stopSelectorLiteral = JSON.stringify(STOP_BUTTON_SELECTOR);
+  const promptSelectorsLiteral = JSON.stringify(INPUT_SELECTORS);
+  const { result } = await Runtime.evaluate({
+    expression: `(() => {
+      const stopSelector = ${stopSelectorLiteral};
+      const promptSelectors = ${promptSelectorsLiteral};
+      const isVisible = (node) => {
+        if (!node || typeof node.getBoundingClientRect !== 'function') return false;
+        const rect = node.getBoundingClientRect();
+        const style = window.getComputedStyle?.(node);
+        return rect.width > 0 && rect.height > 0 && style?.visibility !== 'hidden' && style?.display !== 'none';
+      };
+      if (Array.from(document.querySelectorAll(stopSelector)).some((node) => isVisible(node))) {
+        return false;
+      }
+      const active = document.activeElement;
+      if (!active) {
+        return false;
+      }
+      return promptSelectors.some((selector) => active.matches?.(selector) || active.closest?.(selector));
+    })()`,
+    returnByValue: true,
+  });
+  return result.value === true;
 }
 
 export async function clearPromptComposer(Runtime: ChromeClient["Runtime"], logger: BrowserLogger) {
@@ -628,6 +666,12 @@ async function attemptSendButton(
     });
     if (result.value === "clicked") {
       return true;
+    }
+    if (result.value === "stop-button") {
+      throw new BrowserAutomationError("Refusing to click ChatGPT stop control as a send button.", {
+        stage: "submit-prompt",
+        code: "unsafe-stop-click",
+      });
     }
     if (!needAttachment && result.value === "missing") {
       break;
@@ -926,5 +970,6 @@ export const __test__ = {
   readComposerSnapshot,
   isPromptTooLarge,
   defocusStopButtonAfterSubmit,
+  canSubmitPromptViaEnter,
   verifyPromptCommitted,
 };

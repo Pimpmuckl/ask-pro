@@ -21,6 +21,9 @@ minutes or longer for Pro thinking.
 
 - Do not click ChatGPT's `Answer now` button during Pro thinking. That skips the
   long-thinking path this tool is trying to preserve.
+- Do not type or click in the launched Chrome window after submit. ChatGPT may
+  focus its stop control while thinking; `ask-pro` tries to defocus it, but
+  human input can still cancel the run.
 
 ## Local Checks
 
@@ -140,3 +143,9 @@ Expected:
   ran the default path in Temporary Chat, harvested
   `ASK_PRO_TEMP_EXIT_CLEAN_OK`, and the CLI exited with code 0 after browser
   cleanup.
+- 2026-05-03 - `2026-05-03T153529-please-answer-inline-with-exactly-one-line-open-`
+  ran Temporary Chat with `README.md` attached and returned exactly
+  `ASK_PRO_TEMPORARY_ATTACHMENT_OK`.
+- 2026-05-03 - `2026-05-03T154407-please-answer-inline-with-exactly-one-line-open-`
+  ran normal ChatGPT with `README.md` attached after accepting bare `Pro` as the
+  Pro target and returned exactly `ASK_PRO_NORMAL_ATTACHMENT_OK`.

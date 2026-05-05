@@ -52,7 +52,19 @@ Risk: ChatGPT returns markdown only.
 Mitigation:
 
 - markdown fallback is first-class
-- zip is preferred but optional
+- zip is opt-in and optional
+
+## Preamble-only answer
+
+Risk: ChatGPT acknowledges work, says it will inspect or create files, and then
+the browser capture sees that preamble as the final answer.
+
+Mitigation:
+
+- classify suspicious deferred-work answers as `INCOMPLETE_ANSWER`
+- do not treat incomplete answers as harvest-ready
+- leave the browser open for debug while the incomplete-answer hardening is
+  still active
 
 ## Generated zip unsafe or wrong
 

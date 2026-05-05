@@ -65,7 +65,7 @@
     "format:diff": "oxfmt --write . && git --no-pager diff",
     "lint": "pnpm run typecheck && oxlint",
     "lint:fix": "oxlint --fix && pnpm run format",
-    "plugin:refresh": "node scripts/refresh-local-plugin.mjs",
+    "plugin:refresh": "pnpm run build && node scripts/refresh-local-plugin.mjs",
     "test": "pnpm run test:ask-pro",
     "test:ask-pro": "vitest run tests/ask-pro tests/browser/modelSelection.test.ts tests/browser/thinkingTime.test.ts tests/browser/config.test.ts tests/browser/index.test.ts tests/browser/attachmentsCompletion.test.ts",
     "test:coverage": "vitest run --coverage",
