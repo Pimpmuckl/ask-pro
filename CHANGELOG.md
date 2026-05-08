@@ -36,6 +36,8 @@
   treating npm as the current install path.
 - Replace the long public README with a compact install/use guide centered on
   Codex marketplace installation.
+- Change the repo marketplace entry to the Git-backed root-plugin source shape
+  so `codex plugin marketplace add` exposes the plugin in Codex.
 - Recommend `--no-temporary` for repo advisories, review rounds, large bundles,
   and recoverability-sensitive runs.
 - Mark context redaction as best-effort in manifests and docs instead of

@@ -7,8 +7,9 @@
     {
       "name": "ask-pro",
       "source": {
-        "source": "local",
-        "path": "./"
+        "source": "url",
+        "url": "https://github.com/Pimpmuckl/ask-pro.git",
+        "ref": "main"
       },
       "policy": {
         "installation": "AVAILABLE",

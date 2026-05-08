@@ -23,6 +23,10 @@ later with:
 codex plugin marketplace upgrade ask-pro
 ```
 
+If the marketplace does not appear after adding or upgrading it, restart Codex.
+The repository marketplace exposes the root plugin through a Git-backed plugin
+entry, so no manual copy into `~/.codex/plugins/cache` is needed.
+
 For local development from a checkout:
 
 ```powershell
