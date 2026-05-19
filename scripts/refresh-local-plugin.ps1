@@ -1,5 +1,5 @@
 param(
-  [string]$MarketplacePath = "$HOME/.agents/plugins/marketplace.json",
+  [string]$MarketplacePath = "",
   [string]$CodexHome = $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { "$HOME/.codex" }),
   [string]$PluginName = "ask-pro"
 )
@@ -15,6 +15,14 @@ function Join-And-Normalize([string]$Base, [string[]]$Parts) {
 }
 
 $repoRoot = Resolve-StrictPath (Join-Path $PSScriptRoot "..")
+if ([string]::IsNullOrWhiteSpace($MarketplacePath)) {
+  $codexMarketplace = Join-And-Normalize $CodexHome @(".tmp", "marketplaces", $PluginName, ".agents", "plugins", "marketplace.json")
+  if (Test-Path -LiteralPath $codexMarketplace) {
+    $MarketplacePath = $codexMarketplace
+  } else {
+    $MarketplacePath = "$HOME/.agents/plugins/marketplace.json"
+  }
+}
 $marketplaceFile = Resolve-StrictPath $MarketplacePath
 $marketplace = Get-Content -LiteralPath $marketplaceFile -Raw | ConvertFrom-Json
 $marketplaceName = [string]$marketplace.name
@@ -26,8 +34,8 @@ $plugin = @($marketplace.plugins) | Where-Object { $_.name -eq $PluginName } | S
 if (-not $plugin) {
   throw "Plugin '$PluginName' was not found in $marketplaceFile."
 }
-if ($plugin.source.source -ne "local") {
-  throw "Plugin '$PluginName' is not a local marketplace plugin."
+if (($plugin.source.source -ne "local") -and ($plugin.source.source -ne "url")) {
+  throw "Plugin '$PluginName' must come from a local or URL marketplace source."
 }
 
 $sourceRoot = Resolve-StrictPath $repoRoot
@@ -44,7 +52,11 @@ if ($manifest.name -ne $PluginName) {
 $codexHomePath = [System.IO.Path]::GetFullPath($CodexHome)
 $cacheRoot = Join-And-Normalize $codexHomePath @("plugins", "cache")
 $pluginCacheRoot = Join-And-Normalize $cacheRoot @($marketplaceName, $PluginName)
-$targetRoot = Join-And-Normalize $pluginCacheRoot @("local")
+$cacheVersion = $(if ($plugin.source.source -eq "local") { "local" } else { [string]$manifest.version })
+if ([string]::IsNullOrWhiteSpace($cacheVersion)) {
+  throw "Plugin '$PluginName' manifest must include a version."
+}
+$targetRoot = Join-And-Normalize $pluginCacheRoot @($cacheVersion)
 
 $cacheRootWithSeparator = $cacheRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
 if (-not $pluginCacheRoot.StartsWith($cacheRootWithSeparator, [System.StringComparison]::OrdinalIgnoreCase)) {
@@ -61,7 +73,9 @@ $itemsToCopy = @(
   "skills",
   "references",
   "README.md",
-  "LICENSE"
+  "LICENSE",
+  "package.json",
+  "dist"
 )
 
 foreach ($item in $itemsToCopy) {

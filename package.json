@@ -54,6 +54,7 @@
     "scripts/refresh-local-plugin.mjs",
     "scripts/refresh-local-plugin.ps1",
     ".codex-plugin/plugin.json",
+    ".codex-plugin/assets/ask-pro_logo.png",
     "skills/ask-pro/SKILL.md",
     "README.md",
     "LICENSE"

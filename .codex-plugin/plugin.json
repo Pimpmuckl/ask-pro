@@ -7,6 +7,8 @@
     "displayName": "ask-pro",
     "shortDescription": "$ask-pro browser-backed Pro escalation for hard engineering questions",
     "category": "Productivity",
-    "capabilities": ["Read", "Write"]
+    "capabilities": ["Read", "Write"],
+    "composerIcon": "./assets/ask-pro_logo.png",
+    "logo": "./assets/ask-pro_logo.png"
   }
 }

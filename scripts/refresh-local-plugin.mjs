@@ -6,9 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const args = parseArgs(process.argv.slice(2));
 const pluginName = args.pluginName ?? "ask-pro";
-const marketplacePath =
-  args.marketplacePath ?? path.join(os.homedir(), ".agents", "plugins", "marketplace.json");
 const codexHome = args.codexHome ?? process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
+const marketplacePath = args.marketplacePath ?? (await findCodexMarketplace(codexHome, pluginName));
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
@@ -25,18 +24,19 @@ const plugin = Array.isArray(marketplace.plugins)
 if (!plugin) {
   throw new Error(`Plugin '${pluginName}' was not found in ${marketplaceFile}.`);
 }
-if (plugin.source?.source !== "local") {
-  throw new Error(`Plugin '${pluginName}' is not a local marketplace plugin.`);
-}
-const configuredSourcePath = plugin.source?.path;
-if (typeof configuredSourcePath !== "string" || !configuredSourcePath.trim()) {
-  throw new Error(`Plugin '${pluginName}' local source must include a path.`);
-}
-const configuredSourceRoot = resolveConfiguredSourceRoot(configuredSourcePath, marketplaceFile);
-if (!samePath(configuredSourceRoot, repoRoot)) {
-  throw new Error(
-    `Plugin '${pluginName}' marketplace path resolves to ${configuredSourceRoot}, not this checkout ${repoRoot}.`,
-  );
+if (plugin.source?.source === "local") {
+  const configuredSourcePath = plugin.source?.path;
+  if (typeof configuredSourcePath !== "string" || !configuredSourcePath.trim()) {
+    throw new Error(`Plugin '${pluginName}' local source must include a path.`);
+  }
+  const configuredSourceRoot = resolveConfiguredSourceRoot(configuredSourcePath, marketplaceFile);
+  if (!samePath(configuredSourceRoot, repoRoot)) {
+    throw new Error(
+      `Plugin '${pluginName}' marketplace path resolves to ${configuredSourceRoot}, not this checkout ${repoRoot}.`,
+    );
+  }
+} else if (plugin.source?.source !== "url") {
+  throw new Error(`Plugin '${pluginName}' must come from a local or URL marketplace source.`);
 }
 
 const manifestPath = path.join(repoRoot, ".codex-plugin", "plugin.json");
@@ -49,7 +49,11 @@ if (manifest.name !== pluginName) {
 
 const cacheRoot = path.resolve(codexHome, "plugins", "cache");
 const pluginCacheRoot = path.resolve(cacheRoot, marketplaceName, pluginName);
-const targetRoot = path.resolve(pluginCacheRoot, "local");
+const cacheVersion = plugin.source?.source === "local" ? "local" : manifest.version;
+if (typeof cacheVersion !== "string" || !cacheVersion.trim()) {
+  throw new Error(`Plugin '${pluginName}' manifest must include a version.`);
+}
+const targetRoot = path.resolve(pluginCacheRoot, cacheVersion);
 assertInside(
   pluginCacheRoot,
   cacheRoot,
@@ -141,6 +145,20 @@ async function removeNodeModulesLink(filePath) {
   } catch {
     // Missing or non-removable links are handled by the full target cleanup.
   }
+}
+
+async function findCodexMarketplace(codexHome, pluginName) {
+  const codexMarketplace = path.join(
+    codexHome,
+    ".tmp",
+    "marketplaces",
+    pluginName,
+    ".agents",
+    "plugins",
+    "marketplace.json",
+  );
+  if (await exists(codexMarketplace)) return codexMarketplace;
+  return path.join(os.homedir(), ".agents", "plugins", "marketplace.json");
 }
 
 function resolveConfiguredSourceRoot(sourcePath, marketplaceFile) {
