@@ -25,6 +25,8 @@ import {
 } from "./session.js";
 import { harvestLatestAssistantZip, writeResponseZipManifest } from "./responseZip.js";
 
+type AskProThinkingTime = Extract<ThinkingTimeLevel, "extended">;
+
 const DEFAULT_TIMEOUT_MS = 180 * 60 * 1000;
 const MANUAL_LOGIN_WAIT_MS = 10 * 60 * 1000;
 const ASK_PRO_CHATGPT_URL = "https://chatgpt.com/";
@@ -35,7 +37,7 @@ const AUTH_READY_MARKER = "ask-pro-auth-ready.json";
 export interface RunAskProBrowserSessionOptions {
   cwd: string;
   sessionId: string;
-  thinkingTime?: ThinkingTimeLevel;
+  thinkingTime?: AskProThinkingTime;
   temporary?: boolean;
   chatgptUrl?: string;
   browserProfileDir?: string;
@@ -62,8 +64,7 @@ export async function runAskProBrowserSession({
   const agentId = agentIdOverride !== undefined ? agentIdOverride : resolveAskProAgentId();
   const browserProfile = browserProfileDir ?? askProBrowserProfileDirForAgentId(agentId);
   const metadata = await readBrowserMetadata(paths.browser).catch(() => null);
-  const requestedThinkingTime =
-    thinkingTime ?? (metadata?.thinkingTime === "extended" ? "extended" : undefined);
+  const requestedThinkingTime = resolveAskProThinkingTime(thinkingTime, metadata?.thinkingTime);
   const chatgptUrl =
     chatgptUrlOverride ??
     (temporary === true
@@ -312,8 +313,7 @@ export async function resumeAskProBrowserSession({
   const artifactsRequested = sessionStatus.artifacts === true;
   const logger = buildAskProBrowserLogger(cwd, sessionId, verbose);
   const metadata = await readBrowserMetadata(paths.browser);
-  const effectiveThinkingTime =
-    thinkingTime ?? (metadata.thinkingTime === "extended" ? "extended" : undefined);
+  const effectiveThinkingTime = resolveAskProThinkingTime(thinkingTime, metadata.thinkingTime);
   const effectiveTemporary = temporary ?? metadata.temporary;
   const chatgptUrl =
     effectiveTemporary === true
@@ -901,6 +901,18 @@ function browserResultToRuntime(result: BrowserRunResult): Record<string, unknow
     tabUrl: result.tabUrl,
     controllerPid: result.controllerPid,
   };
+}
+
+function resolveAskProThinkingTime(
+  requested: ThinkingTimeLevel | undefined,
+  stored: ThinkingTimeLevel | undefined,
+): AskProThinkingTime | undefined {
+  if (requested !== undefined && requested !== "extended") {
+    throw new Error(
+      "ask-pro only supports the Pro model with optional Extended Pro thinking. Non-Pro or Heavy/Standard/Light runtime modes are test-only and are not accepted.",
+    );
+  }
+  return requested ?? (stored === "extended" ? "extended" : undefined);
 }
 
 interface AskProBrowserMetadata {

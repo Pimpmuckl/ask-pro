@@ -20,6 +20,8 @@ export function buildModelPickerDomHelpers(): string {
         const className = candidate.getAttribute?.('class') ?? '';
         const hasMenu = candidate.getAttribute?.('aria-haspopup') === 'menu';
         const isEffortOnly = label === 'pro' || label === 'thinking' || EFFORT_LABELS.has(label);
+        const rect = candidate.getBoundingClientRect?.();
+        if (!rect || rect.width <= 0 || rect.height <= 0) continue;
         let score = 0;
         if (testId.includes('model-switcher')) score += 1000;
         if (label.includes('model')) score += 300;
@@ -31,8 +33,7 @@ export function buildModelPickerDomHelpers(): string {
         if (className.includes('__composer-pill') && label.includes('instant')) score += 120;
         if (className.includes('__composer-pill') && hasMenu && isEffortOnly) score += 120;
         if (isEffortOnly) score += 20;
-        const rect = candidate.getBoundingClientRect?.();
-        if (rect && rect.width > 0 && rect.height > 0) score += 10;
+        score += 10;
         if (!best || score > best.score) best = { candidate, score };
       }
       return best && best.score >= 100 ? best.candidate : null;

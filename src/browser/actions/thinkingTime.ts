@@ -1,5 +1,6 @@
 import type { ChromeClient, BrowserLogger, ThinkingTimeLevel } from "../types.js";
 import {
+  INPUT_SELECTORS,
   MENU_CONTAINER_SELECTOR,
   MENU_ITEM_SELECTOR,
   MODEL_BUTTON_SELECTOR,
@@ -119,6 +120,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
   const menuContainerLiteral = JSON.stringify(MENU_CONTAINER_SELECTOR);
   const menuItemLiteral = JSON.stringify(MENU_ITEM_SELECTOR);
   const modelButtonLiteral = JSON.stringify(MODEL_BUTTON_SELECTOR);
+  const inputSelectorsLiteral = JSON.stringify(INPUT_SELECTORS);
   const targetLevelLiteral = JSON.stringify(level.toLowerCase());
 
   return `(async () => {
@@ -127,6 +129,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
     const MENU_CONTAINER_SELECTOR = ${menuContainerLiteral};
     const MENU_ITEM_SELECTOR = ${menuItemLiteral};
     const MODEL_BUTTON_SELECTOR = ${modelButtonLiteral};
+    const INPUT_SELECTORS = ${inputSelectorsLiteral};
     const TARGET_LEVEL = ${targetLevelLiteral};
 
     // English level tokens plus observed localized variants.
@@ -155,6 +158,59 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       return targetTokens.some((tok) => t.includes(String(tok).toLowerCase()));
     };
     ${buildModelPickerDomHelpers()}
+    const readComposerValue = (node) => {
+      if (!node) return '';
+      if (typeof HTMLTextAreaElement !== 'undefined' && node instanceof HTMLTextAreaElement) {
+        return node.value ?? '';
+      }
+      return node.innerText ?? node.textContent ?? '';
+    };
+    const writeComposerValue = (node, value, inputType, data) => {
+      if (!node) return;
+      if (typeof HTMLTextAreaElement !== 'undefined' && node instanceof HTMLTextAreaElement) {
+        node.value = value;
+      } else {
+        node.textContent = value;
+      }
+      node.dispatchEvent(new InputEvent('input', { bubbles: true, inputType, data }));
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const findComposerInput = () => {
+      const candidates = INPUT_SELECTORS
+        .map((selector) => document.querySelector(selector))
+        .filter(Boolean);
+      return candidates.find((node) => {
+        if (!(node instanceof HTMLElement)) return false;
+        const rect = node.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }) || candidates[0] || null;
+    };
+    let wakeRestore = null;
+    const restoreWakeDraft = async () => {
+      if (!wakeRestore) return;
+      const restore = wakeRestore;
+      wakeRestore = null;
+      await restore().catch(() => undefined);
+    };
+    const wakeHiddenModelButton = async () => {
+      if (findModelButton()) return;
+      const input = findComposerInput();
+      if (!(input instanceof HTMLElement)) return;
+      dispatchClickSequence(input);
+      input.focus?.();
+      const before = readComposerValue(input);
+      if (before.trim()) {
+        await sleep(250);
+        return;
+      }
+      const draft = 'ask-pro model selection';
+      writeComposerValue(input, draft, 'insertText', draft);
+      await sleep(500);
+      wakeRestore = async () => {
+        writeComposerValue(input, before, 'deleteByCut', null);
+        await sleep(150);
+      };
+    };
     const optionIsSelected = (node) => {
       if (!(node instanceof HTMLElement)) return false;
       const ariaChecked = node.getAttribute('aria-checked');
@@ -225,6 +281,8 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       return best?.item ?? null;
     };
 
+    await wakeHiddenModelButton();
+
     const oldChip = findOldChip();
     if (oldChip) {
       dispatchClickSequence(oldChip);
@@ -240,6 +298,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
         const opt = findOptionInMenu(menu);
         if (!opt) {
           closeOpenMenus();
+          await restoreWakeDraft();
           return { status: 'option-not-found' };
         }
         const already = optionIsSelected(opt);
@@ -247,6 +306,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
         dispatchClickSequence(opt);
         await sleep(STEP_WAIT_MS);
         closeOpenMenus();
+        await restoreWakeDraft();
         return { status: already ? 'already-selected' : 'switched', label };
       }
       closeOpenMenus();
@@ -343,6 +403,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
 
     const modelBtn = findModelButton();
     if (!modelBtn) {
+      await restoreWakeDraft();
       return { status: 'chip-not-found' };
     }
 
@@ -377,6 +438,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
         const currentLabel = effortControl.textContent?.trim?.() || null;
         if (currentLabel && matchesLevel(currentLabel)) {
           closeOpenMenus();
+          await restoreWakeDraft();
           return { status: 'already-selected', label: currentLabel };
         }
         dispatchClickSequence(effortControl);
@@ -390,6 +452,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
         }
         if (!targetOption) {
           closeOpenMenus();
+          await restoreWakeDraft();
           return { status: 'option-not-found' };
         }
         const already = optionIsSelected(targetOption);
@@ -397,6 +460,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
         dispatchClickSequence(targetOption);
         await sleep(STEP_WAIT_MS);
         closeOpenMenus();
+        await restoreWakeDraft();
         return { status: already ? 'already-selected' : 'switched', label };
       }
     }
@@ -449,6 +513,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
     }
     if (!trailing) {
       closeOpenMenus();
+      await restoreWakeDraft();
       return { status: 'option-not-found' };
     }
 
@@ -486,12 +551,14 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
     }
     if (!effortMenu) {
       closeOpenMenus();
+      await restoreWakeDraft();
       return { status: 'menu-not-found' };
     }
 
     const targetOption = findOptionInMenu(effortMenu);
     if (!targetOption) {
       closeOpenMenus();
+      await restoreWakeDraft();
       return { status: 'option-not-found' };
     }
 
@@ -500,6 +567,7 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
     dispatchClickSequence(targetOption);
     await sleep(STEP_WAIT_MS);
     closeOpenMenus();
+    await restoreWakeDraft();
     return { status: already ? 'already-selected' : 'switched', label };
   })()`;
 }

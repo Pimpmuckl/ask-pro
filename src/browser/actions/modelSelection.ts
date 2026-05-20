@@ -1,5 +1,6 @@
 import type { ChromeClient, BrowserLogger, BrowserModelStrategy } from "../types.js";
 import {
+  INPUT_SELECTORS,
   MENU_CONTAINER_SELECTOR,
   MENU_ITEM_SELECTOR,
   MODEL_BUTTON_SELECTOR,
@@ -83,10 +84,12 @@ function buildModelSelectionExpression(
   const menuContainerLiteral = JSON.stringify(MENU_CONTAINER_SELECTOR);
   const menuItemLiteral = JSON.stringify(MENU_ITEM_SELECTOR);
   const modelButtonLiteral = JSON.stringify(MODEL_BUTTON_SELECTOR);
-  return `(() => {
+  const inputSelectorsLiteral = JSON.stringify(INPUT_SELECTORS);
+  return `(async () => {
     ${buildClickDispatcher()}
     // Capture the selectors and matcher literals up front so the browser expression stays pure.
     const MODEL_BUTTON_SELECTOR = ${modelButtonLiteral};
+    const INPUT_SELECTORS = ${inputSelectorsLiteral};
     const LABEL_TOKENS = ${labelLiteral};
     const TEST_IDS = ${idLiteral};
     const TARGET_VERSION = ${targetVersionLiteral};
@@ -129,6 +132,7 @@ function buildModelSelectionExpression(
       }
       return label.includes(normalizedToken);
     };
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const matchesVisibleAlias = (value) => {
       const label = normalize(value);
       return VISIBLE_ALIASES.some((alias) => {
@@ -156,6 +160,54 @@ function buildModelSelectionExpression(
       return null;
     };
     ${buildModelPickerDomHelpers()}
+    const readComposerValue = (node) => {
+      if (!node) return '';
+      if (typeof HTMLTextAreaElement !== 'undefined' && node instanceof HTMLTextAreaElement) {
+        return node.value ?? '';
+      }
+      return node.innerText ?? node.textContent ?? '';
+    };
+    const writeComposerValue = (node, value, inputType, data) => {
+      if (!node) return;
+      if (typeof HTMLTextAreaElement !== 'undefined' && node instanceof HTMLTextAreaElement) {
+        node.value = value;
+      } else {
+        node.textContent = value;
+      }
+      node.dispatchEvent(new InputEvent('input', { bubbles: true, inputType, data }));
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const findComposerInput = () => {
+      const candidates = INPUT_SELECTORS
+        .map((selector) => document.querySelector(selector))
+        .filter(Boolean);
+      return candidates.find((node) => {
+        if (!(node instanceof HTMLElement)) return false;
+        const rect = node.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }) || candidates[0] || null;
+    };
+    const wakeHiddenModelButton = async () => {
+      const input = findComposerInput();
+      if (!(input instanceof HTMLElement)) return null;
+      dispatchClickSequence(input);
+      input.focus?.();
+      const before = readComposerValue(input);
+      if (before.trim()) {
+        await sleep(250);
+        return { button: findModelButton(), restore: null };
+      }
+      const draft = 'ask-pro model selection';
+      writeComposerValue(input, draft, 'insertText', draft);
+      await sleep(500);
+      return {
+        button: findModelButton(),
+        restore: async () => {
+          writeComposerValue(input, before, 'deleteByCut', null);
+          await sleep(150);
+        },
+      };
+    };
     const detectTemporaryChat = () => {
       try {
         const url = new URL(window.location.href);
@@ -186,8 +238,15 @@ function buildModelSelectionExpression(
       });
     };
 
-    const button = findModelButton();
+    let wakeRestore = null;
+    let button = findModelButton();
     if (!button) {
+      const wake = await wakeHiddenModelButton();
+      button = wake?.button ?? null;
+      wakeRestore = wake?.restore ?? null;
+    }
+    if (!button) {
+      await wakeRestore?.().catch?.(() => undefined);
       if (MODEL_STRATEGY === 'current') {
         return { status: 'already-selected', label: 'current model' };
       }
@@ -216,7 +275,9 @@ function buildModelSelectionExpression(
 
     const getButtonLabel = () => (button.textContent ?? '').trim();
     if (MODEL_STRATEGY === 'current') {
-      return { status: 'already-selected', label: getButtonLabel() };
+      const label = getButtonLabel();
+      await wakeRestore?.().catch?.(() => undefined);
+      return { status: 'already-selected', label };
     }
     const buttonMatchesTarget = () => {
       const normalizedLabel = normalize(getButtonLabel());
@@ -236,7 +297,9 @@ function buildModelSelectionExpression(
     };
 
     if (buttonMatchesTarget()) {
-      return { status: 'already-selected', label: getButtonLabel() };
+      const label = getButtonLabel();
+      await wakeRestore?.().catch?.(() => undefined);
+      return { status: 'already-selected', label };
     }
 
     let lastPointerClick = 0;
@@ -423,6 +486,12 @@ function buildModelSelectionExpression(
       // Open once and wait a tick before first scan.
       pointerClick();
       const openDelay = () => new Promise((r) => setTimeout(r, INITIAL_WAIT_MS));
+      const restoreWakeDraft = async () => {
+        if (!wakeRestore) return;
+        const restore = wakeRestore;
+        wakeRestore = null;
+        await restore().catch(() => undefined);
+      };
       let initialized = false;
       const attempt = async () => {
         if (!initialized) {
@@ -433,6 +502,7 @@ function buildModelSelectionExpression(
         const match = findBestOption();
         if (match) {
           if (optionIsSelected(match.node)) {
+            await restoreWakeDraft();
             closeMenu();
             resolve({ status: 'already-selected', label: getButtonLabel() || match.label });
             return;
@@ -449,17 +519,19 @@ function buildModelSelectionExpression(
           // "Extended", or "Pro" after selecting a terminal Pro row. Require
           // selected-state evidence, or a closed picker, when the composer
           // remains effort-only.
-          setTimeout(() => {
+          setTimeout(async () => {
             if (
               buttonMatchesTarget() ||
               optionIsSelected(match.node) ||
               !document.querySelector(${menuContainerLiteral})
             ) {
+              await restoreWakeDraft();
               closeMenu();
               resolve({ status: 'switched', label: getButtonLabel() || match.label });
               return;
             }
             if (performance.now() - start > MAX_WAIT_MS) {
+              await restoreWakeDraft();
               resolve({
                 status: 'option-not-found',
                 hint: { temporaryChat: detectTemporaryChat(), availableOptions: collectAvailableOptions() },
@@ -471,6 +543,7 @@ function buildModelSelectionExpression(
           return;
         }
         if (performance.now() - start > MAX_WAIT_MS) {
+          await restoreWakeDraft();
           resolve({
             status: 'option-not-found',
             hint: { temporaryChat: detectTemporaryChat(), availableOptions: collectAvailableOptions() },

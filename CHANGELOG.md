@@ -29,6 +29,10 @@
   Instant or Thinking.
 - Accept split-picker `Pro · Extended` selection when ChatGPT closes the picker
   but keeps the composer pill as an effort label like `Heavy`.
+- Wake ChatGPT's hidden blank-composer `Model` pill with a temporary draft
+  before model selection, then restore the composer without submitting.
+- Reject non-Extended ask-pro thinking overrides so Heavy/Standard/Light remain
+  test-only setup states, never accepted runtime modes.
 - Stop adding the generated response zip request to every wrapper prompt; agents
   should ask for `ask-pro-response.zip` only when the task needs that bundle.
 - Mark suspicious preamble-only answers without valid artifacts as

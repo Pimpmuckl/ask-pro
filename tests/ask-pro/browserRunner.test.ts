@@ -83,6 +83,8 @@ describe("ask-pro browser runner", () => {
       config: {
         url: "https://chatgpt.com/?temporary-chat=true",
         attachRunning: false,
+        desiredModel: "Pro",
+        thinkingTime: undefined,
         manualLoginProfileDir: expect.stringMatching(
           /agents[\\/]+review-t1-[a-f0-9]{10}[\\/]+browser-profile$/,
         ),
@@ -107,6 +109,8 @@ describe("ask-pro browser runner", () => {
       config: {
         url: "https://chatgpt.com/?temporary-chat=true",
         attachRunning: false,
+        desiredModel: "Pro",
+        thinkingTime: undefined,
         manualLoginProfileDir: expect.stringContaining(
           path.join(".agents", "skills", "ask-pro", "browser-profile"),
         ),
@@ -254,6 +258,28 @@ describe("ask-pro browser runner", () => {
         thinkingTime: "extended",
       },
     });
+  });
+
+  test("rejects non-extended ask-pro thinking runtime modes", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-heavy-reject-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review with unsupported heavy thinking.",
+      filePatterns: [],
+      dryRun: false,
+    });
+
+    await expect(
+      (
+        runAskProBrowserSession as unknown as (options: {
+          cwd: string;
+          sessionId: string;
+          thinkingTime: "heavy";
+        }) => Promise<unknown>
+      )({ cwd, sessionId: session.id, thinkingTime: "heavy" }),
+    ).rejects.toThrow(/only supports the Pro model/i);
+    expect(runBrowserModeMock).not.toHaveBeenCalled();
   });
 
   test("marks preamble-only answers incomplete when no response zip exists", async () => {
@@ -1199,6 +1225,43 @@ describe("ask-pro browser runner", () => {
       await fs.readFile(path.join(session.dir, "browser.json"), "utf8"),
     ) as { thinkingTime?: string };
     expect(metadata.thinkingTime).toBeUndefined();
+  });
+
+  test("rejects non-extended thinking override on resume", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-resume-heavy-reject-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Resume with unsupported heavy thinking.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        profileDir: path.join(cwd, "profile"),
+        runtime: {
+          chromePort: 9225,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-heavy",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await expect(
+      (
+        resumeAskProBrowserSession as unknown as (options: {
+          cwd: string;
+          sessionId: string;
+          thinkingTime: "heavy";
+        }) => Promise<unknown>
+      )({ cwd, sessionId: session.id, thinkingTime: "heavy" }),
+    ).rejects.toThrow(/only supports the Pro model/i);
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
   });
 
   test("reattach auth failure refreshes browser preflight metadata", async () => {

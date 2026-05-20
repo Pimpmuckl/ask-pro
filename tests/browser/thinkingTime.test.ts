@@ -13,6 +13,7 @@ class FakeElement extends EventTarget {
     attrs: Record<string, string> = {},
     private readonly children: FakeElement[] = [],
     private readonly onClick?: () => void,
+    private readonly onEvent?: (event: Event) => void,
   ) {
     super();
     for (const [key, value] of Object.entries(attrs)) {
@@ -32,6 +33,9 @@ class FakeElement extends EventTarget {
   }
 
   getBoundingClientRect() {
+    if (this.attrs.get("data-hidden") === "true") {
+      return { height: 0, width: 0 };
+    }
     return { height: 32, width: 160 };
   }
 
@@ -97,7 +101,12 @@ class FakeElement extends EventTarget {
     if (event.type === "click") {
       this.onClick?.();
     }
+    this.onEvent?.(event);
     return super.dispatchEvent(event);
+  }
+
+  focus() {
+    return undefined;
   }
 }
 
@@ -105,11 +114,12 @@ class FakeDocument extends EventTarget {
   private readonly byId = new Map<string, FakeElement>();
 
   constructor(
-    private readonly modelButton: FakeElement,
+    public modelButton: FakeElement,
     private readonly trailingButtons: FakeElement[],
     menusById: Record<string, FakeElement>,
     readonly roots: FakeElement[] = [],
     readonly menus: FakeElement[] = [],
+    private readonly inputCandidates: FakeElement[] = [],
   ) {
     super();
     for (const [id, element] of Object.entries(menusById)) {
@@ -122,6 +132,10 @@ class FakeDocument extends EventTarget {
     return this.byId.get(id) ?? null;
   }
 
+  querySelector(selector: string) {
+    return this.querySelectorAll(selector)[0] ?? null;
+  }
+
   querySelectorAll(selector: string) {
     const fromRoots = (roots: FakeElement[]) => [
       ...roots,
@@ -129,6 +143,13 @@ class FakeDocument extends EventTarget {
     ];
     if (selector.includes('button.__composer-pill[aria-haspopup="menu"]')) {
       return [this.modelButton];
+    }
+    if (
+      selector.includes("prompt-textarea") ||
+      selector.includes("contenteditable") ||
+      selector.includes("textarea")
+    ) {
+      return this.inputCandidates;
     }
     if (selector.includes("data-model-picker-thinking-effort-action")) {
       const extra = selector.includes("model-configure-modal") ? fromRoots(this.roots) : [];
@@ -167,7 +188,7 @@ class FakeDocument extends EventTarget {
 
 const runThinkingTimeExpression = async (
   document: FakeDocument,
-  level: "heavy" | "extended",
+  level: "heavy" | "extended" | "standard",
   options: { fastTimeout?: boolean } = {},
 ) => {
   let now = 0;
@@ -191,6 +212,8 @@ const runThinkingTimeExpression = async (
           return 0;
         }
       : setTimeout,
+    Event,
+    InputEvent: Event,
     window: {},
   });
   return await new Script(buildThinkingTimeExpressionForTest(level)).runInContext(context);
@@ -477,6 +500,73 @@ describe("browser thinking-time selection expression", () => {
     expect(result).toEqual({ status: "switched", label: "Extended" });
     expect(proClicked).toBe(true);
     expect(extendedClicked).toBe(true);
+  });
+
+  it("wakes the hidden composer model picker before selecting an effort", async () => {
+    let proClicked = false;
+    let extendedClicked = false;
+    const modelButton = new FakeElement("Standard", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const hiddenModelButton = new FakeElement("Standard", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+      "data-hidden": "true",
+    });
+    const input = new FakeElement(
+      "",
+      { contenteditable: "true", role: "textbox" },
+      [],
+      undefined,
+      (event) => {
+        if (event.type !== "input") return;
+        if (input.textContent.includes("ask-pro model selection")) {
+          document.modelButton = modelButton;
+        }
+      },
+    );
+    const proTrailing = new FakeElement(
+      "",
+      {
+        "aria-controls": "pro-effort",
+        "data-model-picker-thinking-effort-action": "true",
+        "data-testid": "model-switcher-gpt-5-5-pro-thinking-effort",
+        role: "menuitem",
+      },
+      [],
+      () => {
+        proClicked = true;
+      },
+    );
+    new FakeElement("Pro Standard", { class: "group/model-picker-thinking-effort-row relative" }, [
+      new FakeElement("Pro Standard", {
+        "aria-checked": "true",
+        "data-testid": "model-switcher-gpt-5-5-pro",
+        role: "menuitemradio",
+      }),
+      proTrailing,
+    ]);
+    const extendedOption = new FakeElement("Extended", { role: "menuitemradio" }, [], () => {
+      extendedClicked = true;
+    });
+    const document = new FakeDocument(
+      hiddenModelButton,
+      [proTrailing],
+      {
+        "pro-effort": new FakeElement("Standard Extended", { role: "menu" }, [extendedOption]),
+      },
+      [],
+      [],
+      [input],
+    );
+
+    const result = await runThinkingTimeExpression(document, "extended");
+
+    expect(result).toEqual({ status: "switched", label: "Extended" });
+    expect(proClicked).toBe(true);
+    expect(extendedClicked).toBe(true);
+    expect(input.textContent).toBe("");
   });
 
   it("resolves a trailing effort listbox without aria-controls", async () => {

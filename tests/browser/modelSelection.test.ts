@@ -18,6 +18,7 @@ class FakeElement extends EventTarget {
     attrs: Record<string, string> = {},
     private readonly children: FakeElement[] = [],
     private readonly onClick?: () => void,
+    private readonly onEvent?: (event: Event) => void,
   ) {
     super();
     for (const [key, value] of Object.entries(attrs)) {
@@ -34,6 +35,9 @@ class FakeElement extends EventTarget {
   }
 
   getBoundingClientRect() {
+    if (this.attrs.get("data-hidden") === "true") {
+      return { height: 0, width: 0 };
+    }
     return { height: 32, width: 160 };
   }
 
@@ -49,7 +53,12 @@ class FakeElement extends EventTarget {
     if (event.type === "click") {
       this.onClick?.();
     }
+    this.onEvent?.(event);
     return super.dispatchEvent(event);
+  }
+
+  focus() {
+    return undefined;
   }
 }
 
@@ -60,6 +69,7 @@ class FakeDocument extends EventTarget {
   constructor(
     private readonly modelCandidates: FakeElement[] = [],
     readonly menus: FakeElement[] = [],
+    private readonly inputCandidates: FakeElement[] = [],
   ) {
     super();
   }
@@ -67,6 +77,13 @@ class FakeDocument extends EventTarget {
   querySelector(selector: string) {
     if (selector.includes('[role="menu"]') || selector.includes("data-radix-collection-root")) {
       return this.menus[0] ?? null;
+    }
+    if (
+      selector.includes("prompt-textarea") ||
+      selector.includes("contenteditable") ||
+      selector.includes("textarea")
+    ) {
+      return this.inputCandidates[0] ?? null;
     }
     return null;
   }
@@ -80,6 +97,13 @@ class FakeDocument extends EventTarget {
     }
     if (selector.includes('[role="menu"]') || selector.includes("data-radix-collection-root")) {
       return this.menus;
+    }
+    if (
+      selector.includes("prompt-textarea") ||
+      selector.includes("contenteditable") ||
+      selector.includes("textarea")
+    ) {
+      return this.inputCandidates;
     }
     return [];
   }
@@ -112,6 +136,8 @@ const runModelSelectionExpression = async (
           return 0;
         }
       : setTimeout,
+    Event,
+    InputEvent: Event,
     URL,
     window: { location: { href: options.href ?? "https://chatgpt.com/" } },
   });
@@ -313,6 +339,54 @@ describe("browser model selection matchers", () => {
     );
 
     expect(result).toMatchObject({ status: "option-not-found" });
+  });
+
+  it("wakes the hidden composer model picker before selecting Pro", async () => {
+    const hiddenModelButton = new FakeElement("Model", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+      "data-hidden": "true",
+    });
+    const modelCandidates: FakeElement[] = [hiddenModelButton];
+    const modelButton = new FakeElement("Model", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const input = new FakeElement(
+      "",
+      { contenteditable: "true", role: "textbox" },
+      [],
+      undefined,
+      (event) => {
+        if (event.type !== "input") return;
+        if (input.textContent.includes("ask-pro model selection")) {
+          modelCandidates.splice(0, modelCandidates.length, modelButton);
+        }
+      },
+    );
+    const option = new FakeElement("Pro • Extended", {}, [], () => {
+      modelButton.textContent = "Pro";
+    });
+    const menu = new FakeElement(
+      "Latest • 5.5 Instant Thinking • Heavy Pro • Extended",
+      {
+        role: "menu",
+      },
+      [
+        new FakeElement("Latest • 5.5"),
+        new FakeElement("Instant"),
+        new FakeElement("Thinking • Heavy"),
+        option,
+      ],
+    );
+
+    const result = await runModelSelectionExpression(
+      "Pro",
+      new FakeDocument(modelCandidates, [menu], [input]),
+    );
+
+    expect(result).toEqual({ status: "switched", label: "Pro" });
+    expect(input.textContent).toBe("");
   });
 
   it("selects GPT-5.5 Pro from the composer-pill model picker DOM", async () => {
