@@ -62,7 +62,8 @@ export async function runAskProBrowserSession({
   const agentId = agentIdOverride !== undefined ? agentIdOverride : resolveAskProAgentId();
   const browserProfile = browserProfileDir ?? askProBrowserProfileDirForAgentId(agentId);
   const metadata = await readBrowserMetadata(paths.browser).catch(() => null);
-  const requestedThinkingTime = thinkingTime ?? metadata?.thinkingTime ?? "standard";
+  const requestedThinkingTime =
+    thinkingTime ?? (metadata?.thinkingTime === "extended" ? "extended" : undefined);
   const chatgptUrl =
     chatgptUrlOverride ??
     (temporary === true
@@ -110,7 +111,7 @@ export async function runAskProBrowserSession({
         inputTimeoutMs: 90_000,
         assistantRecheckDelayMs: 30_000,
         assistantRecheckTimeoutMs: 180_000,
-        desiredModel: "GPT-5.5 Pro",
+        desiredModel: "Pro",
         modelStrategy: "select",
         thinkingTime: requestedThinkingTime,
         acceptLanguage: ASK_PRO_ACCEPT_LANGUAGE,
@@ -311,6 +312,8 @@ export async function resumeAskProBrowserSession({
   const artifactsRequested = sessionStatus.artifacts === true;
   const logger = buildAskProBrowserLogger(cwd, sessionId, verbose);
   const metadata = await readBrowserMetadata(paths.browser);
+  const effectiveThinkingTime =
+    thinkingTime ?? (metadata.thinkingTime === "extended" ? "extended" : undefined);
   const effectiveTemporary = temporary ?? metadata.temporary;
   const chatgptUrl =
     effectiveTemporary === true
@@ -329,7 +332,7 @@ export async function resumeAskProBrowserSession({
     await runAskProBrowserSession({
       cwd,
       sessionId,
-      thinkingTime: thinkingTime ?? metadata.thinkingTime,
+      thinkingTime: effectiveThinkingTime,
       temporary: false,
       chatgptUrl: ASK_PRO_CHATGPT_URL,
       browserProfileDir: fallbackProfile,
@@ -355,7 +358,7 @@ export async function resumeAskProBrowserSession({
     await runAskProBrowserSession({
       cwd,
       sessionId,
-      thinkingTime: thinkingTime ?? metadata.thinkingTime,
+      thinkingTime: effectiveThinkingTime,
       temporary: effectiveTemporary,
       chatgptUrl: shouldPreserveUrl ? chatgptUrl : undefined,
       browserProfileDir: fallbackProfile,
@@ -375,7 +378,7 @@ export async function resumeAskProBrowserSession({
       schemaVersion: 1,
       status: "running",
       profileDir: fallbackProfile,
-      thinkingTime: thinkingTime ?? metadata.thinkingTime,
+      thinkingTime: effectiveThinkingTime,
       temporary: effectiveTemporary,
       url: chatgptUrl,
       acceptLanguage: ASK_PRO_ACCEPT_LANGUAGE,
@@ -394,7 +397,7 @@ export async function resumeAskProBrowserSession({
         inputTimeoutMs: 90_000,
         acceptLanguage: ASK_PRO_ACCEPT_LANGUAGE,
         url: chatgptUrl,
-        thinkingTime: thinkingTime ?? metadata.thinkingTime,
+        thinkingTime: effectiveThinkingTime,
         startMinimized: false,
       },
       logger,
@@ -410,7 +413,7 @@ export async function resumeAskProBrowserSession({
               schemaVersion: 1,
               status: "running",
               profileDir: fallbackProfile,
-              thinkingTime: thinkingTime ?? metadata.thinkingTime,
+              thinkingTime: effectiveThinkingTime,
               temporary: effectiveTemporary,
               url: chatgptUrl,
               acceptLanguage: ASK_PRO_ACCEPT_LANGUAGE,
@@ -449,7 +452,7 @@ export async function resumeAskProBrowserSession({
         schemaVersion: 1,
         status: finalStatus.browserStatus,
         profileDir: fallbackProfile,
-        thinkingTime: thinkingTime ?? metadata.thinkingTime,
+        thinkingTime: effectiveThinkingTime,
         temporary: effectiveTemporary,
         url: chatgptUrl,
         acceptLanguage: ASK_PRO_ACCEPT_LANGUAGE,
@@ -477,7 +480,7 @@ export async function resumeAskProBrowserSession({
           schemaVersion: 1,
           status: "needs_user_auth",
           profileDir: fallbackProfile,
-          thinkingTime: thinkingTime ?? metadata.thinkingTime,
+          thinkingTime: effectiveThinkingTime,
           temporary: effectiveTemporary,
           url: chatgptUrl,
           acceptLanguage: ASK_PRO_ACCEPT_LANGUAGE,

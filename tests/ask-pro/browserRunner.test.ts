@@ -83,7 +83,6 @@ describe("ask-pro browser runner", () => {
       config: {
         url: "https://chatgpt.com/?temporary-chat=true",
         attachRunning: false,
-        thinkingTime: "standard",
         manualLoginProfileDir: expect.stringMatching(
           /agents[\\/]+review-t1-[a-f0-9]{10}[\\/]+browser-profile$/,
         ),
@@ -108,7 +107,6 @@ describe("ask-pro browser runner", () => {
       config: {
         url: "https://chatgpt.com/?temporary-chat=true",
         attachRunning: false,
-        thinkingTime: "standard",
         manualLoginProfileDir: expect.stringContaining(
           path.join(".agents", "skills", "ask-pro", "browser-profile"),
         ),
@@ -1163,6 +1161,44 @@ describe("ask-pro browser runner", () => {
     expect(metadata.thinkingTime).toBe("extended");
     expect(metadata.chromeMode).toBe("reused_devtools");
     expect(metadata.acceptLanguage).toBe("en-US,en");
+  });
+
+  test("reattach ignores stale recorded standard thinking", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-standard-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Review the saved standard-thinking browser session.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        thinkingTime: "standard",
+        profileDir: path.join(cwd, "profile"),
+        runtime: {
+          chromePort: 9224,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-standard",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
+
+    const firstCall = resumeBrowserSessionMock.mock.calls[0] as unknown[] | undefined;
+    expect(firstCall?.[1]).toMatchObject({
+      thinkingTime: undefined,
+    });
+    const metadata = JSON.parse(
+      await fs.readFile(path.join(session.dir, "browser.json"), "utf8"),
+    ) as { thinkingTime?: string };
+    expect(metadata.thinkingTime).toBeUndefined();
   });
 
   test("reattach auth failure refreshes browser preflight metadata", async () => {

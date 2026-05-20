@@ -194,6 +194,51 @@ describe("browser model selection matchers", () => {
     expect(result).toMatchObject({ status: "option-not-found" });
   });
 
+  it("selects the current visible Pro target from the split latest 5.5 picker", async () => {
+    const modelButton = new FakeElement("Heavy", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const option = new FakeElement("Pro", {}, [], () => {
+      modelButton.textContent = "Pro";
+    });
+    const menu = new FakeElement("Latest • 5.5 Instant Thinking • Heavy Pro Configure...", {}, [
+      new FakeElement("Latest • 5.5"),
+      new FakeElement("Instant"),
+      new FakeElement("Thinking • Heavy"),
+      option,
+      new FakeElement("Configure..."),
+    ]);
+
+    const result = await runModelSelectionExpression(
+      "Pro",
+      new FakeDocument([modelButton], [menu]),
+    );
+
+    expect(result).toEqual({ status: "switched", label: "Pro" });
+  });
+
+  it("does not select Projects for the current visible Pro target", async () => {
+    const modelButton = new FakeElement("Instant", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const option = new FakeElement("Projects", {}, [], () => {
+      modelButton.textContent = "Projects";
+    });
+    const menu = new FakeElement("", { role: "menu" }, [option]);
+
+    const result = await runModelSelectionExpression(
+      "Pro",
+      new FakeDocument([modelButton], [menu]),
+      {
+        fastTimeout: true,
+      },
+    );
+
+    expect(result).toMatchObject({ status: "option-not-found" });
+  });
+
   it("does not accept a visible effort chip as gpt-5.5-pro under select strategy", async () => {
     const effortChip = new FakeElement("Heavy", {
       "aria-haspopup": "menu",

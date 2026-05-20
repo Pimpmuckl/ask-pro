@@ -21,6 +21,12 @@
   realpath containment checks.
 - Treat ChatGPT's visible bare `Pro` picker label as the current Pro target
   instead of requiring a dated model label.
+- Request the visible ChatGPT `Pro` surface for ask-pro browser runs, then
+  select Standard/Extended Pro thinking effort separately, matching the split
+  model/effort selector UI.
+- Leave Pro thinking effort unchanged by default; only `--extended` forces the
+  effort selector, avoiding accidental resets from persisted Extended Pro to
+  Instant or Thinking.
 - Stop adding the generated response zip request to every wrapper prompt; agents
   should ask for `ask-pro-response.zip` only when the task needs that bundle.
 - Mark suspicious preamble-only answers without valid artifacts as

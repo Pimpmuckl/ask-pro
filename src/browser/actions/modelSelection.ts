@@ -225,11 +225,11 @@ function buildModelSelectionExpression(
       if (desiredVersion) {
         if (versionFromText(normalizedLabel) !== desiredVersion) return false;
       }
-      if (wantsPro && !normalizedLabel.includes(' pro')) return false;
+      if (wantsPro && !labelHasToken(normalizedLabel, 'pro')) return false;
       if (wantsInstant && !normalizedLabel.includes('instant')) return false;
       if (wantsThinking && !normalizedLabel.includes('thinking')) return false;
       // Also reject if button has variants we DON'T want
-      if (!wantsPro && normalizedLabel.includes(' pro')) return false;
+      if (!wantsPro && labelHasToken(normalizedLabel, 'pro')) return false;
       if (!wantsInstant && normalizedLabel.includes('instant')) return false;
       if (!wantsThinking && normalizedLabel.includes('thinking')) return false;
       return true;
@@ -328,15 +328,15 @@ function buildModelSelectionExpression(
       if (normalizedText && normalizedTarget) {
         if (normalizedText === normalizedTarget) {
           score += 500;
-        } else if (normalizedText.startsWith(normalizedTarget)) {
+        } else if (normalizedTarget.length > 3 && normalizedText.startsWith(normalizedTarget)) {
           score += 420;
-        } else if (normalizedText.includes(normalizedTarget)) {
+        } else if (normalizedTarget.length > 3 && normalizedText.includes(normalizedTarget)) {
           score += 380;
         }
       }
       for (const token of normalizedTokens) {
         // Reward partial matches to the expanded label/token set.
-        if (token && normalizedText.includes(token)) {
+        if (token && labelHasToken(normalizedText, token)) {
           const tokenWeight = Math.min(120, Math.max(10, token.length * 4));
           score += tokenWeight;
         }
@@ -352,10 +352,10 @@ function buildModelSelectionExpression(
       }
       // If the caller didn't explicitly ask for Pro, prefer non-Pro options when both exist.
       if (wantsPro) {
-        if (!normalizedText.includes(' pro')) {
+        if (!labelHasToken(normalizedText, 'pro')) {
           score -= 80;
         }
-      } else if (normalizedText.includes(' pro')) {
+      } else if (labelHasToken(normalizedText, 'pro')) {
         score -= 40;
       }
       // Similarly for Thinking variant
