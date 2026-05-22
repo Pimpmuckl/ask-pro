@@ -139,7 +139,14 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       extended: ['extended', 'langer', '扩展', '深度', '加强'],
       heavy: ['heavy', '重度', '加重', '高'],
     };
+    const CURRENT_INTELLIGENCE_TOKENS = {
+      light: ['instant', ...LEVEL_TOKENS.light],
+      standard: ['medium', ...LEVEL_TOKENS.standard],
+      extended: ['pro', ...LEVEL_TOKENS.extended],
+      heavy: ['high', ...LEVEL_TOKENS.heavy],
+    };
     const targetTokens = LEVEL_TOKENS[TARGET_LEVEL] || [TARGET_LEVEL];
+    const currentIntelligenceTokens = CURRENT_INTELLIGENCE_TOKENS[TARGET_LEVEL] || [TARGET_LEVEL];
 
     const INITIAL_WAIT_MS = 150;
     const STEP_WAIT_MS = 200;
@@ -156,6 +163,10 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
     const matchesLevel = (text) => {
       const t = normalize(text);
       return targetTokens.some((tok) => t.includes(String(tok).toLowerCase()));
+    };
+    const matchesCurrentIntelligenceLevel = (text) => {
+      const t = normalize(text);
+      return currentIntelligenceTokens.some((tok) => t.startsWith(String(tok).toLowerCase()));
     };
     ${buildModelPickerDomHelpers()}
     const readComposerValue = (node) => {
@@ -259,10 +270,19 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       }
       return null;
     };
-    const levelOptionScore = (node) => {
+    const levelOptionScore = (node, options = {}) => {
       const text = normalize(node.textContent ?? '');
       const aria = normalize(node.getAttribute?.('aria-label') ?? '');
       const label = [text, aria].filter(Boolean).join(' ');
+      const currentIntelligence = options.currentIntelligence === true;
+      if (currentIntelligence) {
+        if (!matchesCurrentIntelligenceLevel(label)) return 0;
+        let score = 500;
+        const role = node.getAttribute?.('role') ?? '';
+        if (TARGET_LEVEL === 'extended' && label.includes('5 min')) score += 100;
+        if (['menuitemradio', 'option', 'radio'].includes(role)) score += 50;
+        return score;
+      }
       if (!matchesLevel(label)) return 0;
       if (EFFORT_LABELS.has(text) || EFFORT_LABELS.has(aria)) return 500;
       if (!text.includes('pro') && !text.includes('thinking') && !aria.includes('pro') && !aria.includes('thinking')) {
@@ -270,15 +290,56 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       }
       return 120;
     };
-    const findOptionInMenu = (menu) => {
+    const findOptionInMenu = (menu, options = {}) => {
       let best = null;
       for (const item of menu.querySelectorAll(MENU_ITEM_SELECTOR + ', [role="option"]')) {
-        const score = levelOptionScore(item);
+        const score = levelOptionScore(item, options);
         if (score > 0 && (!best || score > best.score)) {
           best = { item, score };
         }
       }
       return best?.item ?? null;
+    };
+    const findCurrentIntelligenceMenu = () => {
+      const menus = Array.from(document.querySelectorAll(
+        MENU_CONTAINER_SELECTOR + ', [role="listbox"], [role="group"]'
+      ));
+      return menus.find((menu) => {
+        const text = normalize(menu.textContent ?? '');
+        const testId = normalize(menu.getAttribute?.('data-testid') ?? '');
+        return (
+          testId.includes('composer intelligence picker content') ||
+          (
+            text.includes('intelligence') &&
+            text.includes('instant') &&
+            text.includes('medium') &&
+            text.includes('high') &&
+            text.includes('pro')
+          )
+        );
+      }) ?? null;
+    };
+    const selectCurrentIntelligenceLevel = async () => {
+      const menu = findCurrentIntelligenceMenu();
+      if (!menu) return null;
+      const target = findOptionInMenu(menu, { currentIntelligence: true });
+      if (!target) {
+        return null;
+      }
+      const already = optionIsSelected(target);
+      const label = target.textContent?.trim?.() || null;
+      if (!already) {
+        dispatchClickSequence(target);
+        await sleep(STEP_WAIT_MS);
+      }
+      return { status: already ? 'already-selected' : 'switched', label };
+    };
+    const finishCurrentIntelligenceLevel = async () => {
+      const outcome = await selectCurrentIntelligenceLevel();
+      if (!outcome) return null;
+      closeOpenMenus();
+      await restoreWakeDraft();
+      return outcome;
     };
 
     await wakeHiddenModelButton();
@@ -293,6 +354,10 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
           '[data-model-picker-thinking-effort-action="true"], [data-testid="model-configure-modal"], [role="dialog"]',
         );
         if (newerPickerEvidence.length > 0) break;
+        const currentIntelligenceOutcome = await finishCurrentIntelligenceLevel();
+        if (currentIntelligenceOutcome) {
+          return currentIntelligenceOutcome;
+        }
         const menu = findOldEffortMenu();
         if (!menu) continue;
         const opt = findOptionInMenu(menu);
@@ -421,6 +486,10 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
           await sleep(STEP_WAIT_MS);
           intelligenceDialog = findIntelligenceDialog();
           if (intelligenceDialog) break;
+        }
+        const currentIntelligenceOutcome = await finishCurrentIntelligenceLevel();
+        if (currentIntelligenceOutcome) {
+          return currentIntelligenceOutcome;
         }
         if (hasTrailingEffortControls()) break;
         await sleep(100);

@@ -128,7 +128,9 @@ function buildModelSelectionExpression(
       const normalizedToken = normalize(token);
       if (!normalizedToken) return true;
       if (/^[a-z0-9]+$/.test(normalizedToken)) {
-        return label.split(' ').includes(normalizedToken);
+        return label
+          .split(' ')
+          .some((word) => word === normalizedToken || (word.startsWith(normalizedToken) && /^\\d/.test(word.slice(normalizedToken.length))));
       }
       return label.includes(normalizedToken);
     };

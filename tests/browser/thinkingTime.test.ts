@@ -502,6 +502,94 @@ describe("browser thinking-time selection expression", () => {
     expect(extendedClicked).toBe(true);
   });
 
+  it("treats the current Intelligence Pro tier as Extended", async () => {
+    let proClicked = false;
+    const modelButton = new FakeElement("Pro", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const proOption = new FakeElement(
+      "Pro5+ min",
+      { "aria-checked": "true", role: "menuitemradio" },
+      [],
+      () => {
+        proClicked = true;
+      },
+    );
+    const menu = new FakeElement(
+      "Intelligence Instant5s Medium5-30s High15-60s Pro5+ min GPT-5.5",
+      { "data-testid": "composer-intelligence-picker-content", role: "menu" },
+      [
+        new FakeElement("Instant5s", { role: "menuitemradio" }),
+        new FakeElement("Medium5-30s", { role: "menuitemradio" }),
+        new FakeElement("High15-60s", { role: "menuitemradio" }),
+        proOption,
+        new FakeElement("GPT-5.5", { role: "menuitem" }),
+      ],
+    );
+    const document = new FakeDocument(modelButton, [], {}, [], [menu]);
+
+    const result = await runThinkingTimeExpression(document, "extended");
+
+    expect(result).toEqual({ status: "already-selected", label: "Pro5+ min" });
+    expect(proClicked).toBe(false);
+  });
+
+  it("keeps fallback paths when the current Intelligence menu is unmatched", async () => {
+    let extendedClicked = false;
+    const modelButton = new FakeElement("Pro", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const currentMenu = new FakeElement(
+      "Intelligence Custom5s Balanced30s Deep60s",
+      { "data-testid": "composer-intelligence-picker-content", role: "menu" },
+      [
+        new FakeElement("Custom5s", { role: "menuitemradio" }),
+        new FakeElement("Balanced30s", { role: "menuitemradio" }),
+        new FakeElement("Deep60s", { role: "menuitemradio" }),
+      ],
+    );
+    const legacyMenu = new FakeElement("Standard Extended", { role: "menu" }, [
+      new FakeElement("Extended", { role: "menuitemradio" }, [], () => {
+        extendedClicked = true;
+      }),
+    ]);
+    const document = new FakeDocument(modelButton, [], {}, [], [currentMenu, legacyMenu]);
+
+    const result = await runThinkingTimeExpression(document, "extended");
+
+    expect(result).toEqual({ status: "switched", label: "Extended" });
+    expect(extendedClicked).toBe(true);
+  });
+
+  it("matches localized current Intelligence extended aliases", async () => {
+    const modelButton = new FakeElement("Länger Pro", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const longerOption = new FakeElement("Länger5+ min", {
+      "aria-checked": "true",
+      role: "menuitemradio",
+    });
+    const menu = new FakeElement(
+      "Intelligence Sofort5s Mittel5-30s Hoch15-60s Länger5+ min GPT-5.5",
+      { "data-testid": "composer-intelligence-picker-content", role: "menu" },
+      [
+        new FakeElement("Sofort5s", { role: "menuitemradio" }),
+        new FakeElement("Mittel5-30s", { role: "menuitemradio" }),
+        new FakeElement("Hoch15-60s", { role: "menuitemradio" }),
+        longerOption,
+        new FakeElement("GPT-5.5", { role: "menuitem" }),
+      ],
+    );
+    const document = new FakeDocument(modelButton, [], {}, [], [menu]);
+
+    const result = await runThinkingTimeExpression(document, "extended");
+
+    expect(result).toEqual({ status: "already-selected", label: "Länger5+ min" });
+  });
+
   it("wakes the hidden composer model picker before selecting an effort", async () => {
     let proClicked = false;
     let extendedClicked = false;

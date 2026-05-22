@@ -3,7 +3,19 @@ import { getChatGptModelKindTestIdTokens } from "../chatgptModelCatalog.js";
 export function buildModelPickerDomHelpers(): string {
   const kindTokensLiteral = JSON.stringify(getChatGptModelKindTestIdTokens());
   return `
-    const EFFORT_LABELS = new Set(['light', 'standard', 'extended', 'heavy', 'langer']);
+    const EFFORT_LABELS = new Set([
+      'light',
+      'standard',
+      'extended',
+      'heavy',
+      'instant',
+      'medium',
+      'high',
+      'langer',
+      'sofort',
+      'mittel',
+      'hoch',
+    ]);
     const MODEL_KIND_TEST_ID_TOKENS = ${kindTokensLiteral};
     const findModelButton = () => {
       const candidates = Array.from(document.querySelectorAll(MODEL_BUTTON_SELECTOR));
@@ -30,7 +42,7 @@ export function buildModelPickerDomHelpers(): string {
         if (label.includes('instant')) score += 250;
         if (/\\b5\\b/.test(label) || /\\b5\\s+[0-9]\\b/.test(label)) score += 150;
         if ((label.includes('thinking') || label.includes('pro')) && !isEffortOnly) score += 100;
-        if (className.includes('__composer-pill') && label.includes('instant')) score += 120;
+        if (className.includes('__composer-pill') && (label.includes('instant') || label.includes('medium') || label.includes('high'))) score += 120;
         if (className.includes('__composer-pill') && hasMenu && isEffortOnly) score += 120;
         if (isEffortOnly) score += 20;
         score += 10;

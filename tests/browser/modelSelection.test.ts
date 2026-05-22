@@ -244,6 +244,30 @@ describe("browser model selection matchers", () => {
     expect(result).toEqual({ status: "switched", label: "Pro" });
   });
 
+  it("selects Pro from the current Intelligence High pill", async () => {
+    const modelButton = new FakeElement("High", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const option = new FakeElement("Pro5+ min", { role: "menuitemradio" }, [], () => {
+      modelButton.textContent = "Pro";
+      option.setAttribute("aria-checked", "true");
+    });
+    const menu = new FakeElement("Intelligence Instant5s Medium5-30s High15-60s Pro5+ min", {}, [
+      new FakeElement("Instant5s", { role: "menuitemradio" }),
+      new FakeElement("Medium5-30s", { role: "menuitemradio" }),
+      new FakeElement("High15-60s", { role: "menuitemradio" }),
+      option,
+    ]);
+
+    const result = await runModelSelectionExpression(
+      "Pro",
+      new FakeDocument([modelButton], [menu]),
+    );
+
+    expect(result).toEqual({ status: "switched", label: "Pro" });
+  });
+
   it("accepts Pro Extended when the picker closes but the pill stays effort-only", async () => {
     const modelButton = new FakeElement("Heavy", {
       "aria-haspopup": "menu",

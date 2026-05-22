@@ -35,6 +35,9 @@
   but keeps the composer pill as an effort label like `Heavy`.
 - Wake ChatGPT's hidden blank-composer `Model` pill with a temporary draft
   before model selection, then restore the composer without submitting.
+- Treat ChatGPT's current `Intelligence` picker tiers (`Instant`, `Medium`,
+  `High`, and `Pro 5+ min`) as the live model selector, with `Pro 5+ min` as
+  the Extended Pro thinking target for `--extended`.
 - Reject non-Extended ask-pro thinking overrides so Heavy/Standard/Light remain
   test-only setup states, never accepted runtime modes.
 - Stop adding the generated response zip request to every wrapper prompt; agents
