@@ -78,6 +78,8 @@
 - Add short entropy to new session IDs, choose latest sessions from creation
   metadata, and resolve public session IDs through a bounded
   `.ask-pro/sessions/<id>` helper that rejects path-like values.
+- Run all existing non-live browser safety/unit suites in the default local
+  ask-pro test gate.
 
 ### Added
 
