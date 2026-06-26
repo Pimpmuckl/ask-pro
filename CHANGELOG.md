@@ -4,6 +4,9 @@
 
 ### Changed
 
+- Remove the unused example config file, collapse the ask-pro session status
+  contract to runner-owned V1 states, and reject non-managed browser profile
+  metadata instead of preserving a legacy profile mode.
 - Emphasize in the ask-pro skill that Pro starts with zero caller context and
   long runs should not be killed before a 3-hour wait window.
 - Keep Chrome's background CPU protections enabled for long ask-pro waits.

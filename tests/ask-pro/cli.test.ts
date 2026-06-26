@@ -414,7 +414,7 @@ describe("ask-pro cli", () => {
     const status = JSON.parse(await fs.readFile(statusPath, "utf8"));
     await fs.writeFile(
       path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "browser.json"),
-      `${JSON.stringify({ schemaVersion: 1, status: "needs_user_auth", profileDir: "C:/AskPro/Profile" }, null, 2)}\n`,
+      `${JSON.stringify({ schemaVersion: 1, status: "needs_user_auth", profileDir: "C:/External/Profile" }, null, 2)}\n`,
       "utf8",
     );
     await fs.writeFile(
@@ -436,8 +436,8 @@ describe("ask-pro cli", () => {
     expect(stderr).toBe("");
     expect(stdout).toContain("  state: needs_auth\n");
     expect(stdout).toContain("  action: human_login_then_resume\n");
-    expect(stdout).toContain("  profile: legacy\n");
-    expect(stdout).toContain('  profile_path: "C:/AskPro/Profile"\n');
+    expect(stdout).not.toContain("  profile: ");
+    expect(stdout).not.toContain("  profile_path: ");
     expect(stdout).toContain('  resume: "ask-pro --resume ');
   }, 30000);
 
@@ -650,8 +650,8 @@ describe("ask-pro cli", () => {
     expect(stdout).not.toContain("  chrome: reused_devtools\n");
   }, 30000);
 
-  test("does not classify legacy profile paths as agent profiles from agentId alone", async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-browser-legacy-agent-"));
+  test("omits non-managed profile paths from status output", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-browser-unmanaged-"));
     tempDirs.push(cwd);
 
     const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
@@ -675,7 +675,7 @@ describe("ask-pro cli", () => {
           schemaVersion: 1,
           status: "running",
           agentId: "review-t1-59cd6bada6",
-          profileDir: "C:/Legacy/Profile",
+          profileDir: "C:/External/Profile",
         },
         null,
         2,
@@ -695,8 +695,8 @@ describe("ask-pro cli", () => {
     );
 
     expect(stderr).toBe("");
-    expect(stdout).toContain("  profile: legacy\n");
-    expect(stdout).toContain('  profile_path: "C:/Legacy/Profile"\n');
+    expect(stdout).not.toContain("  profile: ");
+    expect(stdout).not.toContain("  profile_path: ");
   }, 30000);
 
   test("prints resume command for waiting status", async () => {
@@ -786,7 +786,7 @@ describe("ask-pro cli", () => {
     const status = JSON.parse(await fs.readFile(statusPath, "utf8"));
     await fs.writeFile(
       statusPath,
-      `${JSON.stringify({ ...status, status: "READY_TO_HARVEST" }, null, 2)}\n`,
+      `${JSON.stringify({ ...status, status: "COMPLETED" }, null, 2)}\n`,
       "utf8",
     );
 
@@ -797,7 +797,7 @@ describe("ask-pro cli", () => {
     );
 
     expect(stderr).toBe("");
-    expect(stdout).toContain("  state: ready_to_harvest\n");
+    expect(stdout).toContain("  state: completed\n");
     expect(stdout).toContain("  action: copy_target\n");
     expect(stdout).toContain("  target: ");
   }, 30000);
@@ -840,7 +840,7 @@ describe("ask-pro cli", () => {
     expect(stdout).not.toContain("  harvest: ");
   }, 30000);
 
-  test("prints answer path for ready-to-harvest status", async () => {
+  test("prints answer path for completed status", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cli-ready-status-"));
     tempDirs.push(cwd);
 
@@ -860,7 +860,7 @@ describe("ask-pro cli", () => {
     const status = JSON.parse(await fs.readFile(statusPath, "utf8"));
     await fs.writeFile(
       statusPath,
-      `${JSON.stringify({ ...status, status: "READY_TO_HARVEST" }, null, 2)}\n`,
+      `${JSON.stringify({ ...status, status: "COMPLETED" }, null, 2)}\n`,
       "utf8",
     );
 
@@ -871,7 +871,7 @@ describe("ask-pro cli", () => {
     );
 
     expect(stderr).toBe("");
-    expect(stdout).toContain("  state: ready_to_harvest\n");
+    expect(stdout).toContain("  state: completed\n");
     expect(stdout).toContain("  action: harvest\n");
     expect(stdout).toContain("  answer: ");
     expect(stdout).toContain('  harvest: "ask-pro --harvest ');

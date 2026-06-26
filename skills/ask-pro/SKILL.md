@@ -131,7 +131,7 @@ When present, `conversation_url` is a recoverable non-temporary ChatGPT
 conversation URL.
 
 `ask-pro --harvest <session-id>` prints the raw markdown answer only for
-answer-bearing states such as `COMPLETED`, `READY_TO_HARVEST`, or `HARVESTED`.
+answer-bearing states such as `COMPLETED` or `HARVESTED`.
 For pending/incomplete sessions it prints compact status/action instead. For
 sessions run with `--artifacts`, any provided `ask-pro-response.zip` is
 extracted under the session's `pro-output/` directory and described in

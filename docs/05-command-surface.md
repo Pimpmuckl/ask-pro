@@ -153,7 +153,7 @@ ask_pro
 ```
 
 When known, status records include compact browser preflight fields:
-`profile` (`shared`, `agent`, or `legacy`), `profile_path`, `chrome`,
+`profile` (`shared` or `agent`), `profile_path`, `chrome`,
 `language`, and `conversation_url`. Keep deeper browser diagnostics in
 stderr/session logs, not stdout. `conversation_url` is only emitted for
 recoverable non-temporary ChatGPT conversation URLs.

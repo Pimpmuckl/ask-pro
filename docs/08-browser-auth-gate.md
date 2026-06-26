@@ -5,17 +5,13 @@
 ## States
 
 ```text
-CREATED
-CONTEXT_READY
 BROWSER_STARTING
-CHECKING_AUTH
 NEEDS_USER_AUTH
-AUTH_OK
-SUBMITTING
-SUBMITTED
+DRY_RUN_COMPLETE
+READY_TO_SUBMIT
 WAITING
 WAIT_TIMED_OUT
-READY_TO_HARVEST
+INCOMPLETE_ANSWER
 HARVESTED
 COMPLETED
 FAILED
@@ -85,6 +81,6 @@ to saved browser runtime metadata when a session already has it.
 3. headless only after auth has been verified
 
 Generic browser automation may attach to a user-approved running Chrome, but
-`ask-pro` should keep agent-scoped runs on the managed profile path.
+`ask-pro` keeps agent-scoped runs on the managed profile path.
 
 Headless is an optimization, not the auth bootstrap path.

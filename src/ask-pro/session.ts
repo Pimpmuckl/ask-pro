@@ -5,20 +5,13 @@ import fg from "fast-glob";
 import { createStoredZip } from "./zip.js";
 
 export type AskProStatus =
-  | "CREATED"
-  | "CONTEXT_READY"
   | "BROWSER_STARTING"
-  | "CHECKING_AUTH"
-  | "AUTH_OK"
-  | "SUBMITTING"
   | "DRY_RUN_COMPLETE"
   | "READY_TO_SUBMIT"
   | "NEEDS_USER_AUTH"
-  | "SUBMITTED"
   | "WAITING"
   | "WAIT_TIMED_OUT"
   | "INCOMPLETE_ANSWER"
-  | "READY_TO_HARVEST"
   | "HARVESTED"
   | "COMPLETED"
   | "FAILED";

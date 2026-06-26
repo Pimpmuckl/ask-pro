@@ -22,7 +22,6 @@ import { renderToonRecord, type AskProToonFields } from "../src/ask-pro/toon.js"
 import {
   askProAgentIdForManagedBrowserProfileDir,
   defaultAskProBrowserProfileDir,
-  isAskProManagedBrowserProfileDir,
 } from "../src/browser/profilePaths.js";
 import { getCliVersion } from "../src/version.js";
 
@@ -243,7 +242,6 @@ async function submitOrResumeBrowserSession(
     return;
   }
   if (
-    status.status === "SUBMITTED" ||
     status.status === "WAITING" ||
     status.status === "WAIT_TIMED_OUT" ||
     status.status === "INCOMPLETE_ANSWER" ||
@@ -436,32 +434,20 @@ function actionForStatus(status: AskProStatusFile): string {
     case "NEEDS_USER_AUTH":
       return "human_login_then_resume";
     case "COMPLETED":
-    case "READY_TO_HARVEST":
       return "harvest";
     case "HARVESTED":
       return "read_answer";
-    case "SUBMITTED":
     case "WAITING":
     case "BROWSER_STARTING":
-    case "CHECKING_AUTH":
-    case "AUTH_OK":
-    case "SUBMITTING":
       return "wait";
-    case "CREATED":
-    case "CONTEXT_READY":
-      return "none";
   }
 }
 
 function shouldPrintResume(status: AskProStatusFile): boolean {
   return [
     "BROWSER_STARTING",
-    "CHECKING_AUTH",
-    "AUTH_OK",
-    "SUBMITTING",
     "DRY_RUN_COMPLETE",
     "INCOMPLETE_ANSWER",
-    "SUBMITTED",
     "WAITING",
     "READY_TO_SUBMIT",
     "NEEDS_USER_AUTH",
@@ -471,7 +457,7 @@ function shouldPrintResume(status: AskProStatusFile): boolean {
 }
 
 function shouldPrintHarvest(status: AskProStatusFile): boolean {
-  return ["COMPLETED", "READY_TO_HARVEST"].includes(status.status);
+  return status.status === "COMPLETED";
 }
 
 function answerPath(sessionId: string): string {
@@ -483,7 +469,7 @@ function answerExtraForStatus(status: AskProStatusFile, sessionId: string): AskP
 }
 
 function isAnswerBearingStatus(status: AskProStatusFile): boolean {
-  return ["COMPLETED", "READY_TO_HARVEST", "HARVESTED"].includes(status.status);
+  return ["COMPLETED", "HARVESTED"].includes(status.status);
 }
 
 async function readRecoverableCapturedAnswer(
@@ -524,9 +510,10 @@ async function readBrowserPreflightForSession(
   const metadata = await readBrowserMetadata(cwd, sessionId);
   if (!metadata) return {};
   const profileDir = typeof metadata.profileDir === "string" ? metadata.profileDir : undefined;
+  const profile = profileMode(profileDir);
   return compactFields({
-    profile: profileMode(profileDir),
-    profile_path: profileDir ? collapseHome(profileDir) : undefined,
+    profile,
+    profile_path: profile && profileDir ? collapseHome(profileDir) : undefined,
     chrome: chromeMode(metadata),
     language: typeof metadata.acceptLanguage === "string" ? metadata.acceptLanguage : undefined,
     conversation_url: recoverableConversationUrl(metadata),
@@ -550,8 +537,7 @@ function profileMode(profileDir: string | undefined): string | undefined {
   if (!profileDir) return undefined;
   if (askProAgentIdForManagedBrowserProfileDir(profileDir)) return "agent";
   if (path.resolve(profileDir) === path.resolve(defaultAskProBrowserProfileDir())) return "shared";
-  if (isAskProManagedBrowserProfileDir(profileDir)) return "shared";
-  return "legacy";
+  return undefined;
 }
 
 function chromeMode(metadata: BrowserMetadata): string | undefined {

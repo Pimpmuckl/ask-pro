@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   createAskProSession,
   readAskProAnswer,
@@ -10,6 +10,7 @@ import {
   writeAskProBrowserMetadata,
 } from "../../src/ask-pro/session.js";
 
+const managedProfileState = vi.hoisted(() => ({ root: "" }));
 const resumeBrowserSessionMock = vi.fn(async () => ({
   answerText: "reattached answer",
   answerMarkdown: "# Reattached\n",
@@ -42,6 +43,44 @@ vi.mock("../../src/browserMode.js", () => ({
 vi.mock("../../src/browser/chromeLifecycle.js", () => ({
   closeTab: closeTabMock,
 }));
+vi.mock("../../src/browser/profilePaths.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/browser/profilePaths.js")>();
+  const pathModule = await import("node:path");
+  const resolvedAgentIdPattern = /^[a-z0-9._-]+-[a-f0-9]{10}$/;
+  const normalizeProfilePath = (profileDir: string) => {
+    const resolved = pathModule.resolve(profileDir);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
+  const defaultProfile = () => pathModule.join(managedProfileState.root, "browser-profile");
+  const agentProfile = (agentId: string) =>
+    pathModule.join(managedProfileState.root, "agents", agentId, "browser-profile");
+  const agentIdForProfile = (profileDir: string) => {
+    const relative = pathModule.relative(
+      normalizeProfilePath(pathModule.join(managedProfileState.root, "agents")),
+      normalizeProfilePath(profileDir),
+    );
+    if (relative.startsWith("..") || pathModule.isAbsolute(relative)) return null;
+    const parts = relative.split(pathModule.sep);
+    if (parts.length !== 2 || parts[1] !== "browser-profile") return null;
+    const agentId = parts[0]!;
+    return resolvedAgentIdPattern.test(agentId) ? agentId : null;
+  };
+  return {
+    ...actual,
+    defaultAskProBrowserProfileDir: () => defaultProfile(),
+    askProBrowserProfileDirForAgentId: (agentId: string | null | undefined) => {
+      if (!agentId) return defaultProfile();
+      if (!resolvedAgentIdPattern.test(agentId)) {
+        throw new Error("Stored ask-pro agent id is invalid.");
+      }
+      return agentProfile(agentId);
+    },
+    isAskProManagedBrowserProfileDir: (profileDir: string) =>
+      normalizeProfilePath(profileDir) === normalizeProfilePath(defaultProfile()) ||
+      agentIdForProfile(profileDir) !== null,
+    askProAgentIdForManagedBrowserProfileDir: agentIdForProfile,
+  };
+});
 vi.mock("../../src/ask-pro/responseZip.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/ask-pro/responseZip.js")>();
   return {
@@ -54,6 +93,19 @@ const { AskProNeedsAuthError, resumeAskProBrowserSession, runAskProBrowserSessio
   await import("../../src/ask-pro/browserRunner.js");
 
 const tempDirs: string[] = [];
+
+beforeEach(async () => {
+  managedProfileState.root = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-managed-root-"));
+  tempDirs.push(managedProfileState.root);
+});
+
+function testSharedProfileDir(): string {
+  return path.join(managedProfileState.root, "browser-profile");
+}
+
+function testAgentProfileDir(agentId: string): string {
+  return path.join(managedProfileState.root, "agents", agentId, "browser-profile");
+}
 
 afterEach(async () => {
   resumeBrowserSessionMock.mockClear();
@@ -111,9 +163,7 @@ describe("ask-pro browser runner", () => {
         attachRunning: false,
         desiredModel: "Pro",
         thinkingTime: undefined,
-        manualLoginProfileDir: expect.stringContaining(
-          path.join(".agents", "skills", "ask-pro", "browser-profile"),
-        ),
+        manualLoginProfileDir: testSharedProfileDir(),
       },
     });
   });
@@ -218,7 +268,7 @@ describe("ask-pro browser runner", () => {
       dryRun: false,
     });
     const originalWriteFile = fs.writeFile.bind(fs);
-    const writeFileSpy = vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
+    const markerFailureSpy = vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
       const target = String(args[0]);
       if (target.endsWith("ask-pro-auth-ready.json")) {
         throw new Error("marker write failed");
@@ -233,7 +283,7 @@ describe("ask-pro browser runner", () => {
         browserProfileDir: browserProfile,
       });
     } finally {
-      writeFileSpy.mockRestore();
+      markerFailureSpy.mockRestore();
     }
 
     const { status } = await readAskProStatus({ cwd, sessionId: session.id });
@@ -814,7 +864,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "needs_user_auth",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
       },
     });
     await updateAskProStatus({ cwd, sessionId: session.id, status: "NEEDS_USER_AUTH" });
@@ -845,7 +895,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "needs_user_auth",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         url: "https://chatgpt.com/?temporary-chat=true",
       },
     });
@@ -895,7 +945,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "needs_user_auth",
         temporary: true,
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         url: "https://chatgpt.com/?temporary-chat=true",
       },
     });
@@ -928,7 +978,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "failed",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         url: "https://chatgpt.com/?temporary-chat=true",
       },
     });
@@ -946,6 +996,7 @@ describe("ask-pro browser runner", () => {
   test("reattaches submitted sessions without resubmitting", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-"));
     tempDirs.push(cwd);
+    const profileDir = testSharedProfileDir();
     const session = await createAskProSession({
       cwd,
       question: "Review the saved browser session.",
@@ -958,7 +1009,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "running",
-        profileDir: path.join(cwd, "profile"),
+        profileDir,
         runtime: {
           chromePort: 9222,
           chromeHost: "127.0.0.1",
@@ -975,7 +1026,7 @@ describe("ask-pro browser runner", () => {
     expect(firstCall?.[0]).toMatchObject({ chromePort: 9222 });
     expect(firstCall?.[1]).toMatchObject({
       attachRunning: true,
-      manualLoginProfileDir: path.join(cwd, "profile"),
+      manualLoginProfileDir: profileDir,
     });
     const answer = await readAskProAnswer({ cwd, sessionId: session.id });
     expect(answer.answer).toBe("# Reattached\n");
@@ -987,16 +1038,42 @@ describe("ask-pro browser runner", () => {
     expect(manifest.responseZip.status).toBe("not_requested");
   });
 
+  test("reattach rejects non-managed profile metadata", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-unmanaged-"));
+    tempDirs.push(cwd);
+    const unmanagedProfileDir = path.join(cwd, "profile");
+    const session = await createAskProSession({
+      cwd,
+      question: "Reject the unmanaged browser profile.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        profileDir: unmanagedProfileDir,
+        runtime: {
+          chromePort: 9222,
+          chromeHost: "127.0.0.1",
+          tabUrl: "https://chatgpt.com/c/test-unmanaged",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      /stored ask-pro profile path is invalid/i,
+    );
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
+  });
+
   test("reattach relaunch stays visible even for auth-ready profiles", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-auth-marker-"));
     tempDirs.push(cwd);
-    const profileDir = path.join(cwd, "profile");
-    await fs.mkdir(profileDir, { recursive: true });
-    await fs.writeFile(
-      path.join(profileDir, "ask-pro-auth-ready.json"),
-      JSON.stringify({ authenticated: true }),
-      "utf8",
-    );
+    const profileDir = testSharedProfileDir();
     const session = await createAskProSession({
       cwd,
       question: "Review the saved browser session with an auth-ready profile.",
@@ -1044,7 +1121,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "running",
-        profileDir: path.join(cwd, "profile"),
+        profileDir: testSharedProfileDir(),
         runtime: {
           chromePort: 9222,
           chromeHost: "127.0.0.1",
@@ -1102,7 +1179,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "running",
-        profileDir: path.join(cwd, "profile"),
+        profileDir: testSharedProfileDir(),
         runtime: {
           chromePort: 9222,
           chromeHost: "127.0.0.1",
@@ -1165,7 +1242,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "running",
         thinkingTime: "extended",
-        profileDir: path.join(cwd, "profile"),
+        profileDir: testSharedProfileDir(),
         runtime: {
           chromePort: 9223,
           chromeHost: "127.0.0.1",
@@ -1205,7 +1282,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "running",
         thinkingTime: "standard",
-        profileDir: path.join(cwd, "profile"),
+        profileDir: testSharedProfileDir(),
         runtime: {
           chromePort: 9224,
           chromeHost: "127.0.0.1",
@@ -1280,7 +1357,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "running",
         chromeMode: "launched",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         runtime: {
           chromePort: 9225,
           chromeHost: "127.0.0.1",
@@ -1321,7 +1398,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "running",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         runtime: {
           chromePort: 9226,
           chromeHost: "127.0.0.1",
@@ -1362,7 +1439,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "running",
         chromeMode: "launched",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         runtime: {
           chromePort: 9228,
           chromeHost: "127.0.0.1",
@@ -1405,7 +1482,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "running",
         chromeMode: "launched",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         runtime: {
           chromePort: 9231,
           chromeHost: "127.0.0.1",
@@ -1450,7 +1527,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "running",
         chromeMode: "launched",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         runtime: {
           chromePort: 9232,
           chromeHost: "127.0.0.1",
@@ -1495,7 +1572,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "running",
         chromeMode: "launched",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         runtime: {
           chromePort: 9233,
           chromeHost: "127.0.0.1",
@@ -1540,7 +1617,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "needs_user_auth",
         thinkingTime: "extended",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         url: "https://chatgpt.com/",
       },
     });
@@ -1553,13 +1630,7 @@ describe("ask-pro browser runner", () => {
     const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
     expect(firstCall?.[0]).toMatchObject({
       config: {
-        manualLoginProfileDir: path.join(
-          os.homedir(),
-          ".agents",
-          "skills",
-          "ask-pro",
-          "browser-profile",
-        ),
+        manualLoginProfileDir: testSharedProfileDir(),
         startMinimized: false,
         thinkingTime: "extended",
         url: "https://chatgpt.com/",
@@ -1582,7 +1653,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "needs_user_auth",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         url: "https://chatgpt.com/g/g-test-project",
       },
     });
@@ -1613,7 +1684,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "running",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         url: "https://chatgpt.com/",
       },
     });
@@ -1641,7 +1712,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "running",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         url: "https://chatgpt.com/?temporary-chat=true",
         runtime: {
           chromePort: 9224,
@@ -1673,15 +1744,7 @@ describe("ask-pro browser runner", () => {
       filePatterns: [],
       dryRun: false,
     });
-    const storedProfile = path.join(
-      os.homedir(),
-      ".agents",
-      "skills",
-      "ask-pro",
-      "agents",
-      "review-t1-59cd6bada6",
-      "browser-profile",
-    );
+    const storedProfile = testAgentProfileDir("review-t1-59cd6bada6");
     await writeAskProBrowserMetadata({
       cwd,
       sessionId: session.id,
@@ -1803,15 +1866,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "running",
         agentId: "../bad-agent",
-        profileDir: path.join(
-          os.homedir(),
-          ".agents",
-          "skills",
-          "ask-pro",
-          "agents",
-          "review-t1-6d908a4714",
-          "browser-profile",
-        ),
+        profileDir: testAgentProfileDir("review-t1-6d908a4714"),
         runtime: {
           chromePort: 9666,
           chromeHost: "127.0.0.1",
@@ -1842,15 +1897,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "running",
-        profileDir: path.join(
-          os.homedir(),
-          ".agents",
-          "skills",
-          "ask-pro",
-          "agents",
-          "review-t1-6d908a4714",
-          "browser-profile",
-        ),
+        profileDir: testAgentProfileDir("review-t1-6d908a4714"),
         runtime: {
           chromePort: 9776,
           chromeHost: "127.0.0.1",
@@ -1881,15 +1928,7 @@ describe("ask-pro browser runner", () => {
       metadata: {
         schemaVersion: 1,
         status: "running",
-        profileDir: path.join(
-          os.homedir(),
-          ".agents",
-          "skills",
-          "ask-pro",
-          "agents",
-          "review-t1",
-          "browser-profile",
-        ),
+        profileDir: path.join(managedProfileState.root, "agents", "review-t1", "browser-profile"),
         runtime: {
           chromePort: 9778,
           chromeHost: "127.0.0.1",
@@ -1914,15 +1953,7 @@ describe("ask-pro browser runner", () => {
       filePatterns: [],
       dryRun: false,
     });
-    const recordedProfile = path.join(
-      os.homedir(),
-      ".agents",
-      "skills",
-      "ask-pro",
-      "agents",
-      "review-t2-91dc99b944",
-      "browser-profile",
-    );
+    const recordedProfile = testAgentProfileDir("review-t2-91dc99b944");
     await writeAskProBrowserMetadata({
       cwd,
       sessionId: session.id,
@@ -1964,15 +1995,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "running",
         agentId: "review-t1-6d908a4714",
-        profileDir: path.join(
-          os.homedir(),
-          ".agents",
-          "skills",
-          "ask-pro",
-          "agents",
-          "review-t2-91dc99b944",
-          "browser-profile",
-        ),
+        profileDir: testAgentProfileDir("review-t2-91dc99b944"),
         runtime: {
           chromePort: 9777,
           chromeHost: "127.0.0.1",
@@ -2004,7 +2027,7 @@ describe("ask-pro browser runner", () => {
         schemaVersion: 1,
         status: "running",
         agentId: "review-t1-6d908a4714",
-        profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+        profileDir: testSharedProfileDir(),
         runtime: {
           chromePort: 9888,
           chromeHost: "127.0.0.1",
