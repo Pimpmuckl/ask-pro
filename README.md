@@ -13,12 +13,14 @@ code automatically.
 Add this repository as a Codex plugin marketplace:
 
 ```powershell
-codex plugin marketplace add https://github.com/Pimpmuckl/ask-pro --ref main
+codex plugin marketplace add Pimpmuckl/ask-pro
+```
+Install the plugin or open `/plugins`, install `ask-pro`:
+```powershell
+codex plugin add ask-pro@ask-pro
 ```
 
-Then open `/plugins`, install `ask-pro`, and start a new Codex thread. Refresh
-later with:
-
+Upgrade the plugin manually:
 ```powershell
 codex plugin marketplace upgrade ask-pro
 ```
