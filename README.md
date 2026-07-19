@@ -1,7 +1,7 @@
 # ask-pro
 
 `ask-pro` is a Codex plugin and CLI that lets coding agents ask ChatGPT Pro for
-a focused second opinion through a human-controlled browser session.
+a focused second opinion through a human-logged-in browser session.
 
 Use it for architecture calls, production-risk reviews, migrations, debugging
 strategy, and implementation planning. The calling agent still owns the work:
