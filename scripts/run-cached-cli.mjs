@@ -77,7 +77,18 @@ async function bootstrap(root, packageJson) {
     Object.keys(packageJson.optionalDependencies || {}).length > 0;
   if (needsInstall) {
     console.error("[ask-pro] preparing immutable plugin runtime.");
-    await runNpm(["exec", "--yes", "pnpm@10.33.2", "--", "install", "--frozen-lockfile"], root);
+    await runNpm(
+      [
+        "exec",
+        "--yes",
+        "pnpm@10.33.2",
+        "--",
+        "install",
+        "--frozen-lockfile",
+        ...(needsBuild ? ["--prod=false"] : []),
+      ],
+      root,
+    );
   }
   if (needsBuild) {
     await runNpm(["exec", "--yes", "pnpm@10.33.2", "--", "run", "build"], root);
