@@ -122,6 +122,15 @@ describe("resolveBrowserConfig", () => {
     expect(await fs.readFile(path.join(target, "Local State"), "utf8")).toBe("opaque-profile-data");
     expect(await fs.stat(legacy).catch(() => null)).toBeNull();
 
+    const concurrentAgent = "concurrent-16f7b434ba";
+    const concurrentLegacy = legacyAskProBrowserProfileDirForAgentId(concurrentAgent, fakeHome);
+    await fs.mkdir(concurrentLegacy, { recursive: true });
+    const concurrent = await Promise.all([
+      ensureAskProBrowserProfileDir(concurrentAgent, options),
+      ensureAskProBrowserProfileDir(concurrentAgent, options),
+    ]);
+    expect(concurrent[0]).toBe(concurrent[1]);
+
     await fs.mkdir(legacy, { recursive: true });
     await fs.writeFile(
       path.join(legacy, "ask-pro-automation.lock"),

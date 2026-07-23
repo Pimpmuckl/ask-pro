@@ -135,7 +135,14 @@ export async function isBrowserProfileInUse(userDataDir: string): Promise<boolea
   }
   if (lock && isProcessAlive(lock.pid)) return true;
 
-  return isChromeUsingUserDataDir(userDataDir);
+  const pid = await readChromePid(userDataDir);
+  const port = await readDevToolsPort(userDataDir);
+  const [owner, devTools] = await Promise.all([
+    isChromeUsingUserDataDir(userDataDir),
+    port ? verifyDevToolsReachable({ port, attempts: 1 }) : null,
+  ]);
+  if (owner === true || (pid && isProcessAlive(pid) && devTools?.ok)) return true;
+  return owner === null;
 }
 
 export async function acquireProfileRunLock(
@@ -320,7 +327,7 @@ export async function cleanupStaleProfileState(
 
   // Extra safety: if Chrome is running with this profile (but with a different PID, e.g. user relaunched
   // without remote debugging), never delete lock files.
-  if (await isChromeUsingUserDataDir(userDataDir)) {
+  if ((await isChromeUsingUserDataDir(userDataDir)) === true) {
     logger?.("Detected running Chrome using this profile; skipping profile lock cleanup");
     return;
   }
@@ -337,7 +344,7 @@ export async function cleanupStaleProfileState(
   logger?.("Cleaned up stale Chrome profile locks");
 }
 
-async function isChromeUsingUserDataDir(userDataDir: string): Promise<boolean> {
+async function isChromeUsingUserDataDir(userDataDir: string): Promise<boolean | null> {
   if (process.platform === "win32") {
     try {
       const { stdout } = await execFileAsync(
@@ -356,7 +363,7 @@ async function isChromeUsingUserDataDir(userDataDir: string): Promise<boolean> {
       );
       return String(stdout).trim() === "yes";
     } catch {
-      return false;
+      return null;
     }
   }
 
@@ -375,7 +382,7 @@ async function isChromeUsingUserDataDir(userDataDir: string): Promise<boolean> {
       }
     }
   } catch {
-    // best effort
+    return null;
   }
   return false;
 }

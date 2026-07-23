@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { cp, mkdir, rename, rm, stat } from "node:fs/promises";
+import { cp, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { isBrowserProfileInUse } from "./profileState.js";
 
 const RESOLVED_AGENT_ID_PATTERN = /^[a-z0-9._-]+-[a-f0-9]{10}$/;
+const MIGRATION_MARKER = ".ask-pro-profile-migration";
 
 export function defaultAskProBrowserProfileDir(): string {
   return askProBrowserProfileDirForAgentId(null);
@@ -32,6 +33,7 @@ export async function ensureAskProBrowserProfileDir(
   const legacy = legacyAskProBrowserProfileDirForAgentId(agentId, options.homeDir);
   const [targetExists, legacyExists] = await Promise.all([exists(target), exists(legacy)]);
   if (targetExists && legacyExists) {
+    if (await waitForConcurrentMigration(target, legacy)) return target;
     throw new Error(
       `Both current and legacy ask-pro browser profiles exist; refusing to merge ${legacy} into ${target}.`,
     );
@@ -46,18 +48,24 @@ export async function ensureAskProBrowserProfileDir(
     await rename(legacy, target);
     return target;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+    if ((error as NodeJS.ErrnoException).code !== "EXDEV") {
+      if ((await exists(target)) && !(await exists(legacy))) return target;
+      throw error;
+    }
   }
 
   const staging = `${target}.migrating-${process.pid}-${randomUUID()}`;
   try {
     await cp(legacy, staging, { recursive: true, errorOnExist: true });
+    await writeFile(path.join(staging, MIGRATION_MARKER), "");
     await rename(staging, target);
   } catch (error) {
     await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    if (await waitForConcurrentMigration(target, legacy)) return target;
     throw error;
   }
   await rm(legacy, { recursive: true });
+  await rm(path.join(target, MIGRATION_MARKER), { force: true });
   return target;
 }
 
@@ -126,6 +134,18 @@ async function exists(filePath: string): Promise<boolean> {
       if (error.code === "ENOENT") return false;
       throw error;
     });
+}
+
+async function waitForConcurrentMigration(target: string, legacy: string): Promise<boolean> {
+  if (!(await exists(path.join(target, MIGRATION_MARKER)))) return false;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (!(await exists(legacy))) {
+      await rm(path.join(target, MIGRATION_MARKER), { force: true }).catch(() => undefined);
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
 }
 
 export function resolveAskProAgentId(env: NodeJS.ProcessEnv = process.env): string | null {
