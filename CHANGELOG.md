@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Fall back to a verified copy when Windows sharing handles block legacy
+  browser-profile migration, retaining cleanup-denied legacy directories.
 - Install cached-runtime dependencies at their final content-addressed path so
   pnpm's Windows junctions remain valid after publication.
 - Move browser profiles and mutable global state to
