@@ -70,9 +70,11 @@ $CODEX_HOME/state/ask-pro/browser-profile
 ```
 
 Without `CODEX_HOME`, this is `~/.codex/state/ask-pro/browser-profile`.
-On first use, ask-pro moves an inactive legacy
-`~/.agents/skills/ask-pro/.../browser-profile` to the matching state path. It
-refuses to merge profiles or move one that is in use.
+On first use, ask-pro migrates an inactive legacy
+`~/.agents/skills/ask-pro/.../browser-profile` to the matching state path. If a
+Windows watcher prevents moving or removing it, the verified copy may remain
+at the legacy path while the state path becomes authoritative. ask-pro never
+merges profiles or later deletes a retained legacy copy.
 
 Each new profile may need a human login once. On Windows, fresh runs for an
 auth-ready managed profile start minimized; login, resume/recovery, stale-auth,

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { cp, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -11,6 +11,7 @@ import {
 
 const RESOLVED_AGENT_ID_PATTERN = /^[a-z0-9._-]+-[a-f0-9]{10}$/;
 const MIGRATION_MARKER = ".ask-pro-profile-migration";
+type LegacyProfileIdentity = { dev: string; ino: string; birthtimeNs: string };
 
 export function defaultAskProBrowserProfileDir(): string {
   return askProBrowserProfileDirForAgentId(null);
@@ -38,6 +39,22 @@ export async function ensureAskProBrowserProfileDir(
   const legacy = legacyAskProBrowserProfileDirForAgentId(agentId, options.homeDir);
   const [targetExists, legacyExists] = await Promise.all([exists(target), exists(legacy)]);
   if (targetExists && legacyExists) {
+    const recordedIdentity = await retainedLegacyIdentity(target);
+    if (recordedIdentity) {
+      const currentIdentity = await legacyProfileIdentity(legacy);
+      if (currentIdentity && sameLegacyIdentity(currentIdentity, recordedIdentity)) {
+        if (await waitForConcurrentMigration(target, legacy)) return target;
+        if (await isBrowserProfileInUse(legacy)) {
+          throw new Error(
+            "Legacy ask-pro browser profile is in use; retry after its browser run exits.",
+          );
+        }
+        return target;
+      }
+      throw new Error(
+        `Both current and legacy ask-pro browser profiles exist; refusing to merge ${legacy} into ${target}.`,
+      );
+    }
     if (await waitForConcurrentMigration(target, legacy)) return target;
     if ((await exists(target)) && !(await exists(legacy))) return target;
     throw new Error(
@@ -68,42 +85,69 @@ export async function ensureAskProBrowserProfileDir(
   let releasePath = migrationLock.path;
 
   try {
+    if (await matchesRetainedLegacy(target, legacy)) return target;
     if (await isBrowserProfileInUse(legacy, { ignoreLockId: migrationLock.lockId })) {
       throw new Error(
         "Legacy ask-pro browser profile is in use; retry after its browser run exits.",
       );
     }
 
-    await mkdir(path.dirname(target), { recursive: true });
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    let identityRequired = false;
     try {
-      await rename(legacy, target);
+      await fs.rename(legacy, target);
       releasePath = path.join(target, path.basename(migrationLock.path));
       return target;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EXDEV") {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EXDEV" && !isSharingDenied(error)) {
         if ((await exists(target)) && !(await exists(legacy))) return target;
         throw error;
       }
+      identityRequired = code !== "EXDEV";
     }
 
+    const legacyIdentity = await legacyProfileIdentity(legacy);
+    if (identityRequired && !legacyIdentity) {
+      throw new Error("Legacy ask-pro browser profile identity is unavailable; refusing to copy.");
+    }
     const staging = `${target}.migrating-${process.pid}-${randomUUID()}`;
     try {
-      await cp(legacy, staging, { recursive: true, errorOnExist: true });
-      await writeFile(
+      await fs.cp(legacy, staging, { recursive: true, errorOnExist: true });
+      await fs.writeFile(
         path.join(staging, MIGRATION_MARKER),
-        JSON.stringify({ pid: process.pid, createdAt: Date.now() }),
+        JSON.stringify({
+          pid: process.pid,
+          createdAt: Date.now(),
+          migrationLockId: migrationLock.lockId,
+          ...(legacyIdentity ? { legacyIdentity } : {}),
+        }),
       );
-      await rename(staging, target);
+      await fs.rename(staging, target);
       releasePath = path.join(target, path.basename(migrationLock.path));
     } catch (error) {
-      await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+      await fs.rm(staging, { recursive: true, force: true }).catch(() => undefined);
       if ((await exists(target)) && !(await exists(legacy))) return target;
+      if (await matchesRetainedLegacy(target, legacy)) return target;
       if (await waitForConcurrentMigration(target, legacy)) return target;
       if ((await exists(target)) && !(await exists(legacy))) return target;
       throw error;
     }
-    await rm(legacy, { recursive: true });
-    await rm(path.join(target, MIGRATION_MARKER), { force: true });
+    try {
+      await fs.rm(legacy, { recursive: true });
+    } catch (error) {
+      await releaseProfileRunLock(migrationLock.path, migrationLock.lockId);
+      if (isSharingDenied(error) && legacyIdentity) return target;
+      await fs.rm(path.join(target, MIGRATION_MARKER), { force: true });
+      if (isSharingDenied(error)) {
+        throw new Error(
+          "Legacy ask-pro browser profile could not be removed and has no reliable identity; refusing to retain it.",
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+    await fs.rm(path.join(target, MIGRATION_MARKER), { force: true });
     return target;
   } finally {
     await releaseProfileRunLock(releasePath, migrationLock.lockId);
@@ -169,7 +213,8 @@ function askProStateDir(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 async function exists(filePath: string): Promise<boolean> {
-  return stat(filePath)
+  return fs
+    .stat(filePath)
     .then(() => true)
     .catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return false;
@@ -177,29 +222,87 @@ async function exists(filePath: string): Promise<boolean> {
     });
 }
 
+async function legacyProfileIdentity(profileDir: string): Promise<LegacyProfileIdentity | null> {
+  const info = await fs.stat(profileDir, { bigint: true }).catch(() => null);
+  if (!info?.isDirectory() || info.dev <= 0n || info.ino <= 0n || info.birthtimeNs <= 0n) {
+    return null;
+  }
+  return {
+    dev: info.dev.toString(),
+    ino: info.ino.toString(),
+    birthtimeNs: info.birthtimeNs.toString(),
+  };
+}
+
+async function retainedLegacyIdentity(target: string): Promise<LegacyProfileIdentity | null> {
+  const recorded = await fs
+    .readFile(path.join(target, MIGRATION_MARKER), "utf8")
+    .then((raw) => (JSON.parse(raw) as { legacyIdentity?: LegacyProfileIdentity }).legacyIdentity)
+    .catch(() => null);
+  if (
+    !recorded ||
+    ![recorded.dev, recorded.ino, recorded.birthtimeNs].every((value) => /^[1-9]\d*$/.test(value))
+  ) {
+    return null;
+  }
+  return recorded;
+}
+
+async function matchesRetainedLegacy(target: string, legacy: string): Promise<boolean> {
+  const [recorded, current] = await Promise.all([
+    retainedLegacyIdentity(target),
+    legacyProfileIdentity(legacy),
+  ]);
+  return recorded !== null && current !== null && sameLegacyIdentity(recorded, current);
+}
+
+function sameLegacyIdentity(left: LegacyProfileIdentity, right: LegacyProfileIdentity): boolean {
+  return left.dev === right.dev && left.ino === right.ino && left.birthtimeNs === right.birthtimeNs;
+}
+
+function isSharingDenied(error: unknown): boolean {
+  return ["EACCES", "EBUSY", "EPERM"].includes((error as NodeJS.ErrnoException).code ?? "");
+}
+
 async function waitForConcurrentMigration(target: string, legacy: string): Promise<boolean> {
   const marker = path.join(target, MIGRATION_MARKER);
-  const owner = await readFile(marker, "utf8")
-    .then((raw) => JSON.parse(raw) as { pid?: number; createdAt?: number })
+  const owner = await fs
+    .readFile(marker, "utf8")
+    .then(
+      (raw) => JSON.parse(raw) as { pid?: number; createdAt?: number; migrationLockId?: string },
+    )
     .catch(() => null);
   if (
     !owner?.pid ||
     !Number.isFinite(owner.pid) ||
     !owner.createdAt ||
-    !Number.isFinite(owner.createdAt)
+    !Number.isFinite(owner.createdAt) ||
+    !owner.migrationLockId
   ) {
     return false;
   }
-  while (isProcessAlive(owner.pid) && Date.now() - owner.createdAt < 300_000) {
+  while (
+    isProcessAlive(owner.pid) &&
+    Date.now() - owner.createdAt < 300_000 &&
+    (await legacyHasMigrationLock(legacy, owner.migrationLockId))
+  ) {
     if (!(await exists(legacy))) {
-      await rm(marker, { force: true }).catch(() => undefined);
+      await fs.rm(marker, { force: true }).catch(() => undefined);
       return true;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   if (await exists(legacy)) return false;
-  await rm(marker, { force: true }).catch(() => undefined);
+  await fs.rm(marker, { force: true }).catch(() => undefined);
   return exists(target);
+}
+
+async function legacyHasMigrationLock(legacy: string, lockId: string): Promise<boolean> {
+  const activeLockId = await fs
+    .readFile(path.join(legacy, "ask-pro-automation.lock"), "utf8")
+    .then((raw) => (JSON.parse(raw) as { lockId?: string }).lockId)
+    .catch(() => null);
+  return activeLockId === lockId;
 }
 
 export function resolveAskProAgentId(env: NodeJS.ProcessEnv = process.env): string | null {

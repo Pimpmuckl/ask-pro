@@ -178,6 +178,139 @@ describe("resolveBrowserConfig", () => {
     expect(await fs.stat(legacy)).toBeTruthy();
   });
 
+  test("copies on sharing-denied rename and retains only the exact cleanup-denied legacy", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-profile-retained-"));
+    tempDirs.push(root);
+    const options = {
+      env: { CODEX_HOME: path.join(root, "codex") },
+      homeDir: path.join(root, "home"),
+    };
+    const target = askProBrowserProfileDirForAgentId(null, options.env);
+    const legacy = legacyAskProBrowserProfileDirForAgentId(null, options.homeDir);
+    await fs.mkdir(legacy, { recursive: true });
+    await fs.writeFile(path.join(legacy, "Local State"), "opaque-profile-data");
+
+    const originalRename = fs.rename.bind(fs);
+    const originalRm = fs.rm.bind(fs);
+    let signalCleanupStarted!: () => void;
+    const cleanupStarted = new Promise<void>((resolve) => {
+      signalCleanupStarted = resolve;
+    });
+    let allowCleanup!: () => void;
+    const cleanupAllowed = new Promise<void>((resolve) => {
+      allowCleanup = resolve;
+    });
+    const renameSpy = vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+      if (path.resolve(String(from)) === legacy && path.resolve(String(to)) === target) {
+        throw Object.assign(new Error("sharing denied"), { code: "EPERM" });
+      }
+      return originalRename(from, to);
+    });
+    const rmSpy = vi.spyOn(fs, "rm").mockImplementation(async (targetPath, rmOptions) => {
+      if (path.resolve(String(targetPath)) === legacy && rmOptions?.recursive) {
+        expect(
+          JSON.parse(await fs.readFile(path.join(legacy, "ask-pro-automation.lock"), "utf8")),
+        ).toMatchObject({
+          pid: process.pid,
+          lockId: expect.any(String),
+        });
+        signalCleanupStarted();
+        await cleanupAllowed;
+        throw Object.assign(new Error("sharing denied"), { code: "EPERM" });
+      }
+      return originalRm(targetPath, rmOptions);
+    });
+
+    try {
+      const firstMigration = ensureAskProBrowserProfileDir(null, options);
+      await cleanupStarted;
+      const concurrentMigration = ensureAskProBrowserProfileDir(null, options);
+      allowCleanup();
+      const migrated = await Promise.all([firstMigration, concurrentMigration]);
+      expect(migrated).toEqual([target, target]);
+    } finally {
+      renameSpy.mockRestore();
+      rmSpy.mockRestore();
+    }
+
+    expect(await fs.readFile(path.join(target, "Local State"), "utf8")).toBe("opaque-profile-data");
+    expect(await fs.readFile(path.join(legacy, "Local State"), "utf8")).toBe("opaque-profile-data");
+    await expect(fs.stat(path.join(legacy, "ask-pro-automation.lock"))).rejects.toThrow();
+    const marker = JSON.parse(
+      await fs.readFile(path.join(target, ".ask-pro-profile-migration"), "utf8"),
+    );
+    expect(marker.legacyIdentity).toMatchObject({
+      dev: expect.stringMatching(/^[1-9]\d*$/),
+      ino: expect.stringMatching(/^[1-9]\d*$/),
+      birthtimeNs: expect.stringMatching(/^[1-9]\d*$/),
+    });
+
+    await fs.writeFile(
+      path.join(legacy, "ask-pro-automation.lock"),
+      JSON.stringify({
+        pid: process.pid,
+        lockId: "older-runner",
+        createdAt: new Date().toISOString(),
+      }),
+    );
+    await expect(ensureAskProBrowserProfileDir(null, options)).rejects.toThrow(/in use/i);
+    await fs.rm(path.join(legacy, "ask-pro-automation.lock"));
+
+    await fs.writeFile(path.join(legacy, "diverged"), "preserve");
+    expect(await ensureAskProBrowserProfileDir(null, options)).toBe(target);
+    await expect(fs.stat(path.join(target, "diverged"))).rejects.toThrow();
+    expect(await fs.readFile(path.join(legacy, "diverged"), "utf8")).toBe("preserve");
+
+    await fs.rm(legacy, { recursive: true });
+    await fs.mkdir(legacy, { recursive: true });
+    await fs.writeFile(path.join(legacy, "recreated"), "preserve");
+    await expect(ensureAskProBrowserProfileDir(null, options)).rejects.toThrow(/both current/i);
+    expect(await fs.readFile(path.join(legacy, "recreated"), "utf8")).toBe("preserve");
+  });
+
+  test("keeps cross-device copy migration when birth-time identity is unavailable", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-profile-cross-device-"));
+    tempDirs.push(root);
+    const options = {
+      env: { CODEX_HOME: path.join(root, "codex") },
+      homeDir: path.join(root, "home"),
+    };
+    const target = askProBrowserProfileDirForAgentId(null, options.env);
+    const legacy = legacyAskProBrowserProfileDirForAgentId(null, options.homeDir);
+    await fs.mkdir(legacy, { recursive: true });
+    await fs.writeFile(path.join(legacy, "Local State"), "opaque-profile-data");
+
+    const originalRename = fs.rename.bind(fs);
+    const originalStat = fs.stat.bind(fs);
+    const renameSpy = vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
+      if (path.resolve(String(from)) === legacy && path.resolve(String(to)) === target) {
+        throw Object.assign(new Error("cross-device"), { code: "EXDEV" });
+      }
+      return originalRename(from, to);
+    });
+    const statSpy = vi.spyOn(fs, "stat").mockImplementation(async (...args) => {
+      const result = await Reflect.apply(originalStat, fs, args);
+      if (
+        path.resolve(String(args[0])) === legacy &&
+        (args[1] as { bigint?: boolean } | undefined)?.bigint
+      ) {
+        Object.defineProperty(result, "birthtimeNs", { value: 0n });
+      }
+      return result as never;
+    });
+
+    try {
+      expect(await ensureAskProBrowserProfileDir(null, options)).toBe(target);
+    } finally {
+      renameSpy.mockRestore();
+      statSpy.mockRestore();
+    }
+
+    expect(await fs.readFile(path.join(target, "Local State"), "utf8")).toBe("opaque-profile-data");
+    await expect(fs.stat(legacy)).rejects.toThrow();
+    await expect(fs.stat(path.join(target, ".ask-pro-profile-migration"))).rejects.toThrow();
+  });
+
   test("keeps ASK_PRO_AGENT_ID out of shared browser config defaults", () => {
     vi.stubEnv("ASK_PRO_AGENT_ID", "review-t1-windows");
     const resolved = resolveBrowserConfig({ manualLogin: true });
