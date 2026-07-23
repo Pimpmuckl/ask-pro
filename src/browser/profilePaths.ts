@@ -34,6 +34,7 @@ export async function ensureAskProBrowserProfileDir(
   const [targetExists, legacyExists] = await Promise.all([exists(target), exists(legacy)]);
   if (targetExists && legacyExists) {
     if (await waitForConcurrentMigration(target, legacy)) return target;
+    if ((await exists(target)) && !(await exists(legacy))) return target;
     throw new Error(
       `Both current and legacy ask-pro browser profiles exist; refusing to merge ${legacy} into ${target}.`,
     );
@@ -63,6 +64,7 @@ export async function ensureAskProBrowserProfileDir(
     await rm(staging, { recursive: true, force: true }).catch(() => undefined);
     if ((await exists(target)) && !(await exists(legacy))) return target;
     if (await waitForConcurrentMigration(target, legacy)) return target;
+    if ((await exists(target)) && !(await exists(legacy))) return target;
     throw error;
   }
   await rm(legacy, { recursive: true });
