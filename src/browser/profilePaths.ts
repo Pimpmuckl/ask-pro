@@ -55,6 +55,7 @@ export async function ensureAskProBrowserProfileDir(
       timeoutMs: 300_000,
       pollMs: 100,
       requireExistingProfile: true,
+      staleLockMode: "fail",
     });
   } catch (error) {
     if ((await exists(target)) && !(await exists(legacy))) return target;
@@ -88,7 +89,10 @@ export async function ensureAskProBrowserProfileDir(
     const staging = `${target}.migrating-${process.pid}-${randomUUID()}`;
     try {
       await cp(legacy, staging, { recursive: true, errorOnExist: true });
-      await writeFile(path.join(staging, MIGRATION_MARKER), JSON.stringify({ pid: process.pid }));
+      await writeFile(
+        path.join(staging, MIGRATION_MARKER),
+        JSON.stringify({ pid: process.pid, createdAt: Date.now() }),
+      );
       await rename(staging, target);
       releasePath = path.join(target, path.basename(migrationLock.path));
     } catch (error) {
@@ -176,10 +180,17 @@ async function exists(filePath: string): Promise<boolean> {
 async function waitForConcurrentMigration(target: string, legacy: string): Promise<boolean> {
   const marker = path.join(target, MIGRATION_MARKER);
   const owner = await readFile(marker, "utf8")
-    .then((raw) => JSON.parse(raw) as { pid?: number })
+    .then((raw) => JSON.parse(raw) as { pid?: number; createdAt?: number })
     .catch(() => null);
-  if (!owner?.pid || !Number.isFinite(owner.pid)) return false;
-  while (isProcessAlive(owner.pid)) {
+  if (
+    !owner?.pid ||
+    !Number.isFinite(owner.pid) ||
+    !owner.createdAt ||
+    !Number.isFinite(owner.createdAt)
+  ) {
+    return false;
+  }
+  while (isProcessAlive(owner.pid) && Date.now() - owner.createdAt < 300_000) {
     if (!(await exists(legacy))) {
       await rm(marker, { force: true }).catch(() => undefined);
       return true;

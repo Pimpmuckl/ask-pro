@@ -141,7 +141,7 @@ describe("resolveBrowserConfig", () => {
     await expect(ensureAskProBrowserProfileDir(null, options)).rejects.toThrow(/in use/i);
     expect(await fs.stat(legacy)).toBeTruthy();
 
-    await fs.writeFile(path.join(legacy, "ask-pro-automation.lock"), "{stale");
+    await fs.rm(path.join(legacy, "ask-pro-automation.lock"));
     await fs.writeFile(path.join(legacy, "chrome.pid"), `${process.pid}\n`);
     expect(await ensureAskProBrowserProfileDir(null, options)).toBe(target);
     expect(await fs.stat(legacy).catch(() => null)).toBeNull();

@@ -162,6 +162,7 @@ export async function acquireProfileRunLock(
     logger?: ProfileStateLogger;
     sessionId?: string;
     requireExistingProfile?: boolean;
+    staleLockMode?: "remove" | "fail";
   },
 ): Promise<ProfileRunLock | null> {
   const timeoutMs = options.timeoutMs;
@@ -208,12 +209,18 @@ export async function acquireProfileRunLock(
         await delay(200);
         existing = parseProfileRunLock(await readFile(lockPath, "utf8").catch(() => null));
         if (!existing) {
+          if (options.staleLockMode === "fail") {
+            throw new Error("ask-pro profile lock is unreadable; refusing stale lock removal.");
+          }
           options.logger?.("ask-pro profile lock unreadable; deleting lockfile.");
           await rm(lockPath, { force: true }).catch(() => undefined);
           continue;
         }
       }
       if (!existing || !isProcessAlive(existing.pid)) {
+        if (options.staleLockMode === "fail") {
+          throw new Error("ask-pro profile lock owner is not alive; refusing stale lock removal.");
+        }
         await rm(lockPath, { force: true }).catch(() => undefined);
         continue;
       }
