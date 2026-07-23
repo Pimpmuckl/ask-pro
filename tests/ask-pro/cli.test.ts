@@ -1096,6 +1096,28 @@ describe("ask-pro cli", () => {
       cwd: string;
       revision: number;
     };
+    const runtimeParent = path.dirname(path.dirname(path.dirname(path.dirname(first.entry))));
+    const staleStaging = path.join(runtimeParent, ".staging-stale");
+    const staleRuntime = path.join(runtimeParent, "0.9.0-stale");
+    const activeRuntime = path.join(runtimeParent, "0.9.0-active");
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    await fs.mkdir(staleStaging);
+    await fs.mkdir(staleRuntime);
+    await fs.mkdir(activeRuntime);
+    await fs.writeFile(path.join(staleRuntime, ".ask-pro-runtime-ready"), "");
+    await fs.writeFile(path.join(activeRuntime, ".ask-pro-runtime-ready"), "");
+    await fs.writeFile(
+      path.join(activeRuntime, ".active-test.json"),
+      JSON.stringify({ pid: process.pid }),
+    );
+    await Promise.all(
+      [staleStaging, staleRuntime, activeRuntime].map((dir) => fs.utimes(dir, old, old)),
+    );
+    await Promise.all(
+      [staleRuntime, activeRuntime].map((dir) =>
+        fs.utimes(path.join(dir, ".ask-pro-runtime-ready"), old, old),
+      ),
+    );
     const second = JSON.parse(
       (
         await execFileAsync(process.execPath, [cachedRunner, "--", "resume"], {
@@ -1115,6 +1137,9 @@ describe("ask-pro cli", () => {
     expect(first.codexHome).toBe(codexHome);
     expect(first.initCwd).toBe(projectCwd);
     expect(first.cwd).toBe(projectCwd);
+    await expect(fs.stat(staleStaging)).rejects.toThrow();
+    await expect(fs.stat(staleRuntime)).rejects.toThrow();
+    await expect(fs.stat(activeRuntime)).resolves.toBeTruthy();
 
     await writeCli(2);
     const changed = JSON.parse(

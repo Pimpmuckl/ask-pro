@@ -15,21 +15,27 @@ const codexHome = path.resolve(process.env.CODEX_HOME?.trim() || path.join(os.ho
 const runtimeRoot = await ensureRuntime();
 const cliEntry = path.join(runtimeRoot, "dist", "bin", "ask-pro-cli.js");
 const launcher = `${quoteCommandPart(process.execPath)} ${quoteCommandPart(sourceScript)} --`;
+const lease = path.join(runtimeRoot, `.active-${process.pid}.json`);
 
-process.exitCode = await run(
-  process.execPath,
-  [cliEntry, ...args],
-  {
-    cwd: projectCwd,
-    env: {
-      ...process.env,
-      CODEX_HOME: codexHome,
-      INIT_CWD: projectCwd,
-      ASK_PRO_SOURCE_CHECKOUT_LAUNCHER: launcher,
+try {
+  process.exitCode = await run(
+    process.execPath,
+    [cliEntry, ...args],
+    {
+      cwd: projectCwd,
+      env: {
+        ...process.env,
+        CODEX_HOME: codexHome,
+        INIT_CWD: projectCwd,
+        ASK_PRO_SOURCE_CHECKOUT_LAUNCHER: launcher,
+      },
     },
-  },
-  true,
-);
+    true,
+    (child) => fs.writeFileSync(lease, JSON.stringify({ pid: child.pid })),
+  );
+} finally {
+  fs.rmSync(lease, { force: true });
+}
 
 async function ensureRuntime() {
   const packageJsonPath = path.join(sourceRoot, "package.json");
@@ -50,6 +56,8 @@ async function ensureRuntime() {
     const target = path.join(parent, `${version}-${contentHash.slice(0, 16)}`);
     if (fs.existsSync(path.join(target, ".ask-pro-runtime-ready"))) {
       fs.rmSync(staging, { recursive: true, force: true });
+      fs.utimesSync(path.join(target, ".ask-pro-runtime-ready"), new Date(), new Date());
+      pruneRuntimes(parent, target);
       return target;
     }
     await bootstrap(staging, packageJson);
@@ -63,10 +71,64 @@ async function ensureRuntime() {
       if (!fs.existsSync(path.join(target, ".ask-pro-runtime-ready"))) throw error;
       fs.rmSync(staging, { recursive: true, force: true });
     }
+    pruneRuntimes(parent, target);
     return target;
   } catch (error) {
     fs.rmSync(staging, { recursive: true, force: true });
     throw error;
+  }
+}
+
+function pruneRuntimes(parent, keep) {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  for (const entry of fs.readdirSync(parent, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const root = path.join(parent, entry.name);
+    const ready = path.join(root, ".ask-pro-runtime-ready");
+    if (root === keep) continue;
+    try {
+      if (entry.name.startsWith(".staging-")) {
+        if (fs.statSync(root).mtimeMs < cutoff) fs.rmSync(root, { recursive: true, force: true });
+        continue;
+      }
+      if (!fs.existsSync(ready) || fs.statSync(ready).mtimeMs >= cutoff || hasLiveLease(root)) {
+        continue;
+      }
+      fs.rmSync(root, { recursive: true, force: true });
+    } catch {
+      // best-effort cleanup must not block the selected runtime
+    }
+  }
+}
+
+function hasLiveLease(root) {
+  let names;
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return true;
+  }
+  for (const name of names) {
+    if (!name.startsWith(".active-")) continue;
+    const lease = path.join(root, name);
+    try {
+      const { pid } = JSON.parse(fs.readFileSync(lease, "utf8"));
+      if (isProcessAlive(pid)) return true;
+    } catch {
+      // stale or unreadable lease
+    }
+    fs.rmSync(lease, { force: true });
+  }
+  return false;
+}
+
+function isProcessAlive(pid) {
+  if (!Number.isFinite(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
   }
 }
 
@@ -156,8 +218,9 @@ function runNpm(args, cwd) {
   return run("npm", args, { cwd, env: process.env, shell: process.platform === "win32" });
 }
 
-function run(command, args, options, allowNonzero = false) {
+function run(command, args, options, allowNonzero = false, onSpawn) {
   const child = spawn(command, args, { ...options, stdio: "inherit" });
+  onSpawn?.(child);
   return new Promise((resolve, reject) => {
     child.on("error", reject);
     child.on("exit", (code) => {
