@@ -44,6 +44,7 @@ async function ensureRuntime() {
   }
   const parent = path.join(codexHome, "plugin-runtimes", "ask-pro");
   fs.mkdirSync(parent, { recursive: true });
+  pruneStaging(parent);
   const staging = path.join(parent, `.staging-${process.pid}-${randomUUID()}`);
   try {
     fs.cpSync(sourceRoot, staging, {
@@ -79,6 +80,19 @@ async function ensureRuntime() {
   }
 }
 
+function pruneStaging(parent) {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  for (const entry of fs.readdirSync(parent, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith(".staging-")) continue;
+    const root = path.join(parent, entry.name);
+    try {
+      if (fs.statSync(root).mtimeMs < cutoff) fs.rmSync(root, { recursive: true, force: true });
+    } catch {
+      // best effort
+    }
+  }
+}
+
 function pruneRuntimes(parent, keep) {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   for (const entry of fs.readdirSync(parent, { withFileTypes: true })) {
@@ -87,10 +101,7 @@ function pruneRuntimes(parent, keep) {
     const ready = path.join(root, ".ask-pro-runtime-ready");
     if (root === keep) continue;
     try {
-      if (entry.name.startsWith(".staging-")) {
-        if (fs.statSync(root).mtimeMs < cutoff) fs.rmSync(root, { recursive: true, force: true });
-        continue;
-      }
+      if (entry.name.startsWith(".staging-")) continue;
       if (!fs.existsSync(ready) || fs.statSync(ready).mtimeMs >= cutoff || hasLiveLease(root)) {
         continue;
       }
