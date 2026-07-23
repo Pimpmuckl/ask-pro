@@ -197,14 +197,7 @@ async function waitForConcurrentMigration(target: string, legacy: string): Promi
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  if (await exists(legacy)) {
-    if (await isBrowserProfileInUse(legacy)) return false;
-    try {
-      await rm(legacy, { recursive: true });
-    } catch {
-      return false;
-    }
-  }
+  if (await exists(legacy)) return false;
   await rm(marker, { force: true }).catch(() => undefined);
   return exists(target);
 }

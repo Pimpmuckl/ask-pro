@@ -154,6 +154,18 @@ describe("resolveBrowserConfig", () => {
     expect(await fs.stat(legacy)).toBeTruthy();
     expect(await fs.stat(target)).toBeTruthy();
 
+    await fs.writeFile(
+      path.join(target, ".ask-pro-profile-migration"),
+      JSON.stringify({ pid: 2_147_483_647, createdAt: Date.now() - 301_000 }),
+    );
+    await fs.writeFile(path.join(legacy, "Local State"), "recreated-profile-data");
+    await expect(ensureAskProBrowserProfileDir(null, options)).rejects.toThrow(
+      /refusing to merge/i,
+    );
+    expect(await fs.readFile(path.join(legacy, "Local State"), "utf8")).toBe(
+      "recreated-profile-data",
+    );
+
     await fs.rm(target, { recursive: true });
     const blockedCodexHome = path.join(root, "blocked-codex-home");
     await fs.writeFile(blockedCodexHome, "not a directory");
