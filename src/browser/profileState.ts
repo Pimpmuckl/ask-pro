@@ -1,6 +1,6 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { delay } from "./utils.js";
@@ -119,7 +119,10 @@ function parseProfileRunLock(payload: string | null): ProfileRunLockRecord | nul
   }
 }
 
-export async function isBrowserProfileInUse(userDataDir: string): Promise<boolean> {
+export async function isBrowserProfileInUse(
+  userDataDir: string,
+  options: { ignoreLockId?: string } = {},
+): Promise<boolean> {
   const lockPath = path.join(userDataDir, ASK_PRO_PROFILE_LOCK_FILENAME);
   let lockPayload: string | null;
   try {
@@ -139,7 +142,7 @@ export async function isBrowserProfileInUse(userDataDir: string): Promise<boolea
     }
     lock = parseProfileRunLock(lockPayload);
   }
-  if (lock && isProcessAlive(lock.pid)) return true;
+  if (lock && lock.lockId !== options.ignoreLockId && isProcessAlive(lock.pid)) return true;
 
   const pid = await readChromePid(userDataDir);
   const port = await readDevToolsPort(userDataDir);
@@ -158,6 +161,7 @@ export async function acquireProfileRunLock(
     pollMs?: number;
     logger?: ProfileStateLogger;
     sessionId?: string;
+    requireExistingProfile?: boolean;
   },
 ): Promise<ProfileRunLock | null> {
   const timeoutMs = options.timeoutMs;
@@ -181,7 +185,11 @@ export async function acquireProfileRunLock(
         createdAt: new Date().toISOString(),
         sessionId: options.sessionId,
       };
-      await mkdir(path.dirname(lockPath), { recursive: true });
+      if (options.requireExistingProfile) {
+        await stat(userDataDir);
+      } else {
+        await mkdir(path.dirname(lockPath), { recursive: true });
+      }
       await writeFile(lockPath, JSON.stringify(payload), { encoding: "utf8", flag: "wx" });
       options.logger?.(`Acquired ask-pro profile lock at ${lockPath}`);
       return {

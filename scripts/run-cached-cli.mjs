@@ -36,13 +36,7 @@ async function ensureRuntime() {
   if (!fs.existsSync(packageJsonPath)) {
     throw new Error(`ask-pro plugin cache is missing package.json at ${packageJsonPath}`);
   }
-  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-  const contentHash = hashSource();
-  const version = safeKeyPart(packageJson.version || "0.0.0");
   const parent = path.join(codexHome, "plugin-runtimes", "ask-pro");
-  const target = path.join(parent, `${version}-${contentHash.slice(0, 16)}`);
-  if (fs.existsSync(path.join(target, ".ask-pro-runtime-ready"))) return target;
-
   fs.mkdirSync(parent, { recursive: true });
   const staging = path.join(parent, `.staging-${process.pid}-${randomUUID()}`);
   try {
@@ -50,6 +44,14 @@ async function ensureRuntime() {
       recursive: true,
       filter: (source) => !excluded(path.relative(sourceRoot, source)),
     });
+    const packageJson = JSON.parse(fs.readFileSync(path.join(staging, "package.json"), "utf8"));
+    const contentHash = hashSource(staging);
+    const version = safeKeyPart(packageJson.version || "0.0.0");
+    const target = path.join(parent, `${version}-${contentHash.slice(0, 16)}`);
+    if (fs.existsSync(path.join(target, ".ask-pro-runtime-ready"))) {
+      fs.rmSync(staging, { recursive: true, force: true });
+      return target;
+    }
     await bootstrap(staging, packageJson);
     fs.writeFileSync(
       path.join(staging, ".ask-pro-runtime-ready"),
@@ -99,10 +101,10 @@ async function bootstrap(root, packageJson) {
   }
 }
 
-function hashSource() {
+function hashSource(root) {
   const digest = createHash("sha256");
-  for (const file of sourceFiles(sourceRoot)) {
-    const relative = path.relative(sourceRoot, file).split(path.sep).join("/");
+  for (const file of sourceFiles(root)) {
+    const relative = path.relative(root, file).split(path.sep).join("/");
     digest.update(relative);
     digest.update("\0");
     digest.update(fs.readFileSync(file));

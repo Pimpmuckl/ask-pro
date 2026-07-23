@@ -2,7 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { cp, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { isBrowserProfileInUse, isProcessAlive } from "./profileState.js";
+import {
+  acquireProfileRunLock,
+  isBrowserProfileInUse,
+  isProcessAlive,
+  releaseProfileRunLock,
+} from "./profileState.js";
 
 const RESOLVED_AGENT_ID_PATTERN = /^[a-z0-9._-]+-[a-f0-9]{10}$/;
 const MIGRATION_MARKER = ".ask-pro-profile-migration";
@@ -44,32 +49,61 @@ export async function ensureAskProBrowserProfileDir(
     throw new Error("Legacy ask-pro browser profile is in use; retry after its browser run exits.");
   }
 
-  await mkdir(path.dirname(target), { recursive: true });
+  let migrationLock;
   try {
-    await rename(legacy, target);
-    return target;
+    migrationLock = await acquireProfileRunLock(legacy, {
+      timeoutMs: 300_000,
+      pollMs: 100,
+      requireExistingProfile: true,
+    });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EXDEV") {
+    if ((await exists(target)) && !(await exists(legacy))) return target;
+    throw new Error(
+      "Legacy ask-pro browser profile could not be claimed; retry after other browser runs exit.",
+      { cause: error },
+    );
+  }
+  if (!migrationLock) throw new Error("Could not claim the legacy ask-pro browser profile.");
+  let releasePath = migrationLock.path;
+
+  try {
+    if (await isBrowserProfileInUse(legacy, { ignoreLockId: migrationLock.lockId })) {
+      throw new Error(
+        "Legacy ask-pro browser profile is in use; retry after its browser run exits.",
+      );
+    }
+
+    await mkdir(path.dirname(target), { recursive: true });
+    try {
+      await rename(legacy, target);
+      releasePath = path.join(target, path.basename(migrationLock.path));
+      return target;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EXDEV") {
+        if ((await exists(target)) && !(await exists(legacy))) return target;
+        throw error;
+      }
+    }
+
+    const staging = `${target}.migrating-${process.pid}-${randomUUID()}`;
+    try {
+      await cp(legacy, staging, { recursive: true, errorOnExist: true });
+      await writeFile(path.join(staging, MIGRATION_MARKER), JSON.stringify({ pid: process.pid }));
+      await rename(staging, target);
+      releasePath = path.join(target, path.basename(migrationLock.path));
+    } catch (error) {
+      await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+      if ((await exists(target)) && !(await exists(legacy))) return target;
+      if (await waitForConcurrentMigration(target, legacy)) return target;
       if ((await exists(target)) && !(await exists(legacy))) return target;
       throw error;
     }
+    await rm(legacy, { recursive: true });
+    await rm(path.join(target, MIGRATION_MARKER), { force: true });
+    return target;
+  } finally {
+    await releaseProfileRunLock(releasePath, migrationLock.lockId);
   }
-
-  const staging = `${target}.migrating-${process.pid}-${randomUUID()}`;
-  try {
-    await cp(legacy, staging, { recursive: true, errorOnExist: true });
-    await writeFile(path.join(staging, MIGRATION_MARKER), JSON.stringify({ pid: process.pid }));
-    await rename(staging, target);
-  } catch (error) {
-    await rm(staging, { recursive: true, force: true }).catch(() => undefined);
-    if ((await exists(target)) && !(await exists(legacy))) return target;
-    if (await waitForConcurrentMigration(target, legacy)) return target;
-    if ((await exists(target)) && !(await exists(legacy))) return target;
-    throw error;
-  }
-  await rm(legacy, { recursive: true });
-  await rm(path.join(target, MIGRATION_MARKER), { force: true });
-  return target;
 }
 
 export function askProAgentIdForLegacyBrowserProfileDir(profileDir: string): string | null {
@@ -152,7 +186,14 @@ async function waitForConcurrentMigration(target: string, legacy: string): Promi
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  if (await exists(legacy)) return false;
+  if (await exists(legacy)) {
+    if (await isBrowserProfileInUse(legacy)) return false;
+    try {
+      await rm(legacy, { recursive: true });
+    } catch {
+      return false;
+    }
+  }
   await rm(marker, { force: true }).catch(() => undefined);
   return exists(target);
 }
