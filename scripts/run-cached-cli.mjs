@@ -85,6 +85,7 @@ async function bootstrap(root, packageJson) {
         "--",
         "install",
         "--frozen-lockfile",
+        "--ignore-scripts",
         ...(needsBuild ? ["--prod=false"] : []),
       ],
       root,

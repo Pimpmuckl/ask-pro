@@ -61,6 +61,7 @@ export async function ensureAskProBrowserProfileDir(
     await rename(staging, target);
   } catch (error) {
     await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    if ((await exists(target)) && !(await exists(legacy))) return target;
     if (await waitForConcurrentMigration(target, legacy)) return target;
     throw error;
   }
