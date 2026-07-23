@@ -1050,6 +1050,8 @@ describe("ask-pro cli", () => {
   test("cached runner executes from a reusable content-addressed runtime", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cached-runtime-"));
     tempDirs.push(root);
+    const projectCwd = path.join(root, "project");
+    await fs.mkdir(projectCwd);
     const codexHome = path.join(root, "codex");
     const cacheRoot = path.join(codexHome, "plugins", "cache", "market", "ask-pro", "0.1.0");
     const cachedRunner = path.join(cacheRoot, "scripts", "run-cached-cli.mjs");
@@ -1066,19 +1068,36 @@ describe("ask-pro cli", () => {
         cachedCli,
         [
           'import { fileURLToPath } from "node:url";',
-          `console.log(JSON.stringify({ entry: fileURLToPath(import.meta.url), args: process.argv.slice(2), launcher: process.env.ASK_PRO_SOURCE_CHECKOUT_LAUNCHER, revision: ${revision} }));`,
+          `console.log(JSON.stringify({ entry: fileURLToPath(import.meta.url), args: process.argv.slice(2), launcher: process.env.ASK_PRO_SOURCE_CHECKOUT_LAUNCHER, codexHome: process.env.CODEX_HOME, cwd: process.cwd(), revision: ${revision} }));`,
           "",
         ].join("\n"),
       );
     await writeCli(1);
 
     const before = await snapshotFiles(cacheRoot);
-    const env = { ...process.env, CODEX_HOME: codexHome };
+    const env = { ...process.env, CODEX_HOME: path.relative(projectCwd, codexHome) };
     const first = JSON.parse(
-      (await execFileAsync(process.execPath, [cachedRunner, "--", "status"], { env })).stdout,
-    ) as { entry: string; args: string[]; launcher: string; revision: number };
+      (
+        await execFileAsync(process.execPath, [cachedRunner, "--", "status"], {
+          cwd: projectCwd,
+          env,
+        })
+      ).stdout,
+    ) as {
+      entry: string;
+      args: string[];
+      launcher: string;
+      codexHome: string;
+      cwd: string;
+      revision: number;
+    };
     const second = JSON.parse(
-      (await execFileAsync(process.execPath, [cachedRunner, "--", "resume"], { env })).stdout,
+      (
+        await execFileAsync(process.execPath, [cachedRunner, "--", "resume"], {
+          cwd: projectCwd,
+          env,
+        })
+      ).stdout,
     ) as typeof first;
 
     expect(await snapshotFiles(cacheRoot)).toEqual(before);
@@ -1088,10 +1107,17 @@ describe("ask-pro cli", () => {
     expect(first.args).toEqual(["status"]);
     expect(second.args).toEqual(["resume"]);
     expect(first.launcher).toContain(cachedRunner);
+    expect(first.codexHome).toBe(codexHome);
+    expect(first.cwd).toBe(projectCwd);
 
     await writeCli(2);
     const changed = JSON.parse(
-      (await execFileAsync(process.execPath, [cachedRunner, "--", "status"], { env })).stdout,
+      (
+        await execFileAsync(process.execPath, [cachedRunner, "--", "status"], {
+          cwd: projectCwd,
+          env,
+        })
+      ).stdout,
     ) as typeof first;
     expect(changed.revision).toBe(2);
     expect(changed.entry).not.toBe(first.entry);

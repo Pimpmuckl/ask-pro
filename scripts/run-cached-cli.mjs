@@ -10,6 +10,7 @@ const rawArgs = process.argv.slice(2);
 const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;
 const sourceScript = fileURLToPath(import.meta.url);
 const sourceRoot = path.resolve(path.dirname(sourceScript), "..");
+const projectCwd = process.cwd();
 const codexHome = path.resolve(process.env.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex"));
 const runtimeRoot = await ensureRuntime();
 const cliEntry = path.join(runtimeRoot, "dist", "bin", "ask-pro-cli.js");
@@ -19,9 +20,10 @@ process.exitCode = await run(
   process.execPath,
   [cliEntry, ...args],
   {
-    cwd: runtimeRoot,
+    cwd: projectCwd,
     env: {
       ...process.env,
+      CODEX_HOME: codexHome,
       ASK_PRO_SOURCE_CHECKOUT_LAUNCHER: launcher,
     },
   },
