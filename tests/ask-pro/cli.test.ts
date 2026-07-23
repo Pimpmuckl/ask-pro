@@ -9,6 +9,19 @@ import { afterEach, describe, expect, test } from "vitest";
 const execFileAsync = promisify(execFile);
 const tempDirs: string[] = [];
 
+async function snapshotFiles(root: string, current = root): Promise<Record<string, string>> {
+  const snapshot: Record<string, string> = {};
+  for (const entry of await fs.readdir(current, { withFileTypes: true })) {
+    const fullPath = path.join(current, entry.name);
+    if (entry.isDirectory()) {
+      Object.assign(snapshot, await snapshotFiles(root, fullPath));
+    } else {
+      snapshot[path.relative(root, fullPath)] = (await fs.readFile(fullPath)).toString("base64");
+    }
+  }
+  return snapshot;
+}
+
 afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
@@ -467,8 +480,8 @@ describe("ask-pro cli", () => {
           agentId: "agent-1234567890",
           profileDir: path.join(
             os.homedir(),
-            ".agents",
-            "skills",
+            ".codex",
+            "state",
             "ask-pro",
             "agents",
             "agent-1234567890",
@@ -624,7 +637,7 @@ describe("ask-pro cli", () => {
         {
           schemaVersion: 1,
           status: "running",
-          profileDir: path.join(os.homedir(), ".agents", "skills", "ask-pro", "browser-profile"),
+          profileDir: path.join(os.homedir(), ".codex", "state", "ask-pro", "browser-profile"),
           runtime: { chromePort: 9222 },
         },
         null,
@@ -1032,5 +1045,112 @@ describe("ask-pro cli", () => {
 
     const sessions = await fs.readdir(path.join(projectCwd, ".ask-pro", "sessions"));
     expect(sessions).toHaveLength(1);
+  }, 30000);
+
+  test("cached runner executes from a reusable content-addressed runtime", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-cached-runtime-"));
+    tempDirs.push(root);
+    const projectCwd = path.join(root, "project");
+    await fs.mkdir(projectCwd);
+    const codexHome = path.join(root, "codex");
+    const cacheRoot = path.join(codexHome, "plugins", "cache", "market", "ask-pro", "0.1.0");
+    const cachedRunner = path.join(cacheRoot, "scripts", "run-cached-cli.mjs");
+    const cachedCli = path.join(cacheRoot, "dist", "bin", "ask-pro-cli.js");
+    await fs.mkdir(path.dirname(cachedRunner), { recursive: true });
+    await fs.mkdir(path.dirname(cachedCli), { recursive: true });
+    await fs.copyFile(path.join(process.cwd(), "scripts", "run-cached-cli.mjs"), cachedRunner);
+    await fs.writeFile(
+      path.join(cacheRoot, "package.json"),
+      `${JSON.stringify({ name: "ask_pro", version: "1.2.3", type: "module" }, null, 2)}\n`,
+    );
+    const writeCli = (revision: number) =>
+      fs.writeFile(
+        cachedCli,
+        [
+          'import { fileURLToPath } from "node:url";',
+          `console.log(JSON.stringify({ entry: fileURLToPath(import.meta.url), args: process.argv.slice(2), launcher: process.env.ASK_PRO_SOURCE_CHECKOUT_LAUNCHER, codexHome: process.env.CODEX_HOME, initCwd: process.env.INIT_CWD, cwd: process.cwd(), revision: ${revision} }));`,
+          "",
+        ].join("\n"),
+      );
+    await writeCli(1);
+
+    const before = await snapshotFiles(cacheRoot);
+    const env = {
+      ...process.env,
+      CODEX_HOME: path.relative(projectCwd, codexHome),
+      INIT_CWD: path.join(root, "stale-init-cwd"),
+    };
+    const first = JSON.parse(
+      (
+        await execFileAsync(process.execPath, [cachedRunner, "--", "status"], {
+          cwd: projectCwd,
+          env,
+        })
+      ).stdout,
+    ) as {
+      entry: string;
+      args: string[];
+      launcher: string;
+      codexHome: string;
+      initCwd: string;
+      cwd: string;
+      revision: number;
+    };
+    const runtimeParent = path.dirname(path.dirname(path.dirname(path.dirname(first.entry))));
+    const staleStaging = path.join(runtimeParent, ".staging-stale");
+    const staleRuntime = path.join(runtimeParent, "0.9.0-stale");
+    const activeRuntime = path.join(runtimeParent, "0.9.0-active");
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    await fs.mkdir(staleStaging);
+    await fs.mkdir(staleRuntime);
+    await fs.mkdir(activeRuntime);
+    await fs.writeFile(path.join(staleRuntime, ".ask-pro-runtime-ready"), "");
+    await fs.writeFile(path.join(activeRuntime, ".ask-pro-runtime-ready"), "");
+    await fs.writeFile(
+      path.join(activeRuntime, ".active-test.json"),
+      JSON.stringify({ pid: process.pid }),
+    );
+    await Promise.all(
+      [staleStaging, staleRuntime, activeRuntime].map((dir) => fs.utimes(dir, old, old)),
+    );
+    await Promise.all(
+      [staleRuntime, activeRuntime].map((dir) =>
+        fs.utimes(path.join(dir, ".ask-pro-runtime-ready"), old, old),
+      ),
+    );
+    const second = JSON.parse(
+      (
+        await execFileAsync(process.execPath, [cachedRunner, "--", "resume"], {
+          cwd: projectCwd,
+          env,
+        })
+      ).stdout,
+    ) as typeof first;
+
+    expect(await snapshotFiles(cacheRoot)).toEqual(before);
+    expect(first.entry).toBe(second.entry);
+    expect(first.entry).toContain(path.join("plugin-runtimes", "ask-pro", "1.2.3-"));
+    expect(first.entry).not.toContain(path.join("plugins", "cache"));
+    expect(first.args).toEqual(["status"]);
+    expect(second.args).toEqual(["resume"]);
+    expect(first.launcher).toContain(cachedRunner);
+    expect(first.codexHome).toBe(codexHome);
+    expect(first.initCwd).toBe(projectCwd);
+    expect(first.cwd).toBe(projectCwd);
+    await expect(fs.stat(staleStaging)).rejects.toThrow();
+    await expect(fs.stat(staleRuntime)).rejects.toThrow();
+    await expect(fs.stat(activeRuntime)).resolves.toBeTruthy();
+
+    await writeCli(2);
+    const changed = JSON.parse(
+      (
+        await execFileAsync(process.execPath, [cachedRunner, "--", "status"], {
+          cwd: projectCwd,
+          env,
+        })
+      ).stdout,
+    ) as typeof first;
+    expect(changed.revision).toBe(2);
+    expect(changed.entry).not.toBe(first.entry);
   }, 30000);
 });

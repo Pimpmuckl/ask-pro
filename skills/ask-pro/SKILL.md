@@ -56,7 +56,9 @@ When invoked:
    then call it with:
    `node <cached-runner> -- --cwd <target-repo-root> --no-temporary --prompt-file <path> --files "<repo-relative-glob>"`.
    On Git marketplace installs, the first cached-runner call may bootstrap the
-   cache by installing dependencies and building `dist`; wait for that to finish.
+   content-addressed runtime under `$CODEX_HOME/plugin-runtimes/ask-pro/` by
+   installing dependencies and building `dist`; wait for that to finish. The
+   installed plugin cache stays immutable.
 6. If auth is required, stop and ask the human to log in in the opened browser.
 7. Read the CLI's compact `ask_pro` record and run the emitted `resume` or
    `harvest` command when that is the next action.
@@ -82,7 +84,8 @@ attention, ask-pro should restore or retain the browser and emit the next
 action.
 
 Do not set `ASK_PRO_AGENT_ID` for ordinary single-agent use; the shared
-`ask-pro` browser profile is already persistent. Set `ASK_PRO_AGENT_ID` only
+`ask-pro` browser profile under `$CODEX_HOME/state/ask-pro/` is already
+persistent. Set `ASK_PRO_AGENT_ID` only
 when separate agents truly need isolated browser profiles, such as concurrent
 review lanes. Use a stable reusable lowercase id like `review-t1`, not a
 one-off task slug, because each new id creates a new Chrome profile and may

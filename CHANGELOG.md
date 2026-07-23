@@ -4,6 +4,11 @@
 
 ### Changed
 
+- Move browser profiles and mutable global state to
+  `$CODEX_HOME/state/ask-pro/`, safely migrate inactive legacy profiles once,
+  and run cached-plugin builds and CLI processes from content-addressed
+  `$CODEX_HOME/plugin-runtimes/ask-pro/` copies instead of mutating the
+  installed cache.
 - Select `GPT-5.6 Sol`, then `Pro` intelligence in ChatGPT, and remove the
   obsolete `--extended` CLI/session surface now that Pro is a single tier.
 - Remove the unused example config file, collapse the ask-pro session status
@@ -63,7 +68,7 @@
 - Keep npm publishing out of scope until a human explicitly approves release.
 - Narrow the product to browser-backed ChatGPT Pro escalation with project-local
   `.ask-pro/` sessions and a persistent
-  `~/.agents/skills/ask-pro/browser-profile`.
+  `$CODEX_HOME/state/ask-pro/browser-profile`.
 - Remove the old Oracle API provider, Gemini, MCP, TUI, bridge, remote-service,
   image, notifier, multi-model, and ad hoc browser-debug surfaces from V1.
 - Trim runtime dependencies to the ask-pro browser closure.
@@ -74,7 +79,8 @@
 - Change the repo marketplace entry to the Git-backed root-plugin source shape
   so `codex plugin marketplace add` exposes the plugin in Codex.
 - Make the cached plugin runner bootstrap Git marketplace installs by installing
-  dependencies and building `dist` when the cached source has not been built yet.
+  dependencies and building `dist` in a content-addressed runtime when the
+  cached source has not been built yet.
 - Clarify that ask-pro prompts must include cold-start context because ChatGPT
   Pro does not know local repo history, user preferences, or Codex thread state.
 - Recommend `--no-temporary` for repo advisories, review rounds, large bundles,

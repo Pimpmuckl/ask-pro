@@ -83,6 +83,7 @@ for (const item of [
   "README.md",
   "LICENSE",
   "package.json",
+  "pnpm-lock.yaml",
   "dist",
 ]) {
   const source = path.join(repoRoot, item);

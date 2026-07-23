@@ -2,9 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { BrowserAutomationError } from "../browser/errors.js";
 import {
+  askProAgentIdForLegacyBrowserProfileDir,
   askProAgentIdForManagedBrowserProfileDir,
   askProBrowserProfileDirForAgentId,
-  defaultAskProBrowserProfileDir,
+  ensureAskProBrowserProfileDir,
+  isLegacyAskProManagedBrowserProfileDir,
   isAskProManagedBrowserProfileDir,
   resolveAskProAgentId,
 } from "../browser/profilePaths.js";
@@ -57,7 +59,7 @@ export async function runAskProBrowserSession({
   const { status: sessionStatus } = await readAskProStatus({ cwd, sessionId });
   const artifactsRequested = sessionStatus.artifacts === true;
   const agentId = agentIdOverride !== undefined ? agentIdOverride : resolveAskProAgentId();
-  const browserProfile = browserProfileDir ?? askProBrowserProfileDirForAgentId(agentId);
+  const browserProfile = browserProfileDir ?? (await ensureAskProBrowserProfileDir(agentId));
   const metadata = await readBrowserMetadata(paths.browser).catch(() => null);
   const chatgptUrl =
     chatgptUrlOverride ??
@@ -306,7 +308,14 @@ export async function resumeAskProBrowserSession({
       : effectiveTemporary === false
         ? ASK_PRO_CHATGPT_URL
         : (metadata.url ?? ASK_PRO_TEMPORARY_CHATGPT_URL);
-  const fallbackProfile = resolveResumeBrowserProfile(metadata);
+  const fallbackProfile = await resolveResumeBrowserProfile(metadata);
+  if (metadata.runtime) {
+    metadata.runtime = normalizeResumeRuntime(
+      metadata.runtime,
+      metadata.profileDir,
+      fallbackProfile,
+    );
+  }
   const attachRunning = !metadata.agentId;
   if (effectiveTemporary === false && isTemporaryAskProUrl(metadata.url ?? "")) {
     await appendAskProLog(
@@ -762,35 +771,79 @@ async function writeTerminalBrowserMetadata(
   });
 }
 
-function resolveResumeBrowserProfile(metadata: AskProBrowserMetadata): string {
+async function resolveResumeBrowserProfile(metadata: AskProBrowserMetadata): Promise<string> {
   const agentProfile = resolveStoredAgentProfile(metadata.agentId);
   const profileDir = metadata.profileDir;
   const profileAgentId = profileDir ? askProAgentIdForManagedBrowserProfileDir(profileDir) : null;
+  const legacyAgentId = profileDir ? askProAgentIdForLegacyBrowserProfileDir(profileDir) : null;
   if (profileAgentId && profileAgentId !== metadata.agentId) {
+    throw new Error("Stored ask-pro agent profile does not match stored agent id.");
+  }
+  if (legacyAgentId && legacyAgentId !== metadata.agentId) {
     throw new Error("Stored ask-pro agent profile does not match stored agent id.");
   }
   if (profileAgentId && agentProfile) {
     return profileDir!;
   }
+  if (legacyAgentId && agentProfile) {
+    return ensureAskProBrowserProfileDir(metadata.agentId);
+  }
   if (
     profileDir &&
     !profileAgentId &&
+    !legacyAgentId &&
     !agentProfile &&
     isAskProManagedBrowserProfileDir(profileDir)
   ) {
-    return profileDir;
+    return ensureAskProBrowserProfileDir(null);
+  }
+  if (
+    profileDir &&
+    !profileAgentId &&
+    !legacyAgentId &&
+    !agentProfile &&
+    isLegacyAskProManagedBrowserProfileDir(profileDir)
+  ) {
+    return ensureAskProBrowserProfileDir(null);
   }
   if (profileDir) {
     throw new Error("Stored ask-pro profile path is invalid.");
   }
 
-  if (agentProfile) return agentProfile;
-  return defaultAskProBrowserProfileDir();
+  return ensureAskProBrowserProfileDir(metadata.agentId);
 }
 
 function resolveStoredAgentProfile(agentId: string | null | undefined): string | null {
   if (!agentId) return null;
   return askProBrowserProfileDirForAgentId(agentId);
+}
+
+function normalizeResumeRuntime(
+  runtime: NonNullable<AskProBrowserMetadata["runtime"]>,
+  storedProfile: string | undefined,
+  resolvedProfile: string,
+): NonNullable<AskProBrowserMetadata["runtime"]> {
+  const allowed = [storedProfile, resolvedProfile].filter((value): value is string =>
+    Boolean(value),
+  );
+  for (const candidate of [runtime.chromeProfileRoot, runtime.userDataDir]) {
+    if (candidate && !allowed.some((value) => samePath(candidate, value))) {
+      throw new Error("Stored ask-pro browser runtime profile path is invalid.");
+    }
+  }
+  return {
+    ...runtime,
+    ...(runtime.chromeProfileRoot ? { chromeProfileRoot: resolvedProfile } : {}),
+    ...(runtime.userDataDir ? { userDataDir: resolvedProfile } : {}),
+  };
+}
+
+function samePath(left: string, right: string): boolean {
+  const normalize = (value: string) => {
+    const resolved = path.resolve(value);
+    return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  };
+  return normalize(left) === normalize(right);
 }
 
 export class AskProNeedsAuthError extends Error {

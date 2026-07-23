@@ -10,7 +10,7 @@ import {
   writeAskProBrowserMetadata,
 } from "../../src/ask-pro/session.js";
 
-const managedProfileState = vi.hoisted(() => ({ root: "" }));
+const managedProfileState = vi.hoisted(() => ({ root: "", legacyRoot: "" }));
 const resumeBrowserSessionMock = vi.fn(async () => ({
   answerText: "reattached answer",
   answerMarkdown: "# Reattached\n",
@@ -52,11 +52,13 @@ vi.mock("../../src/browser/profilePaths.js", async (importOriginal) => {
     return process.platform === "win32" ? resolved.toLowerCase() : resolved;
   };
   const defaultProfile = () => pathModule.join(managedProfileState.root, "browser-profile");
+  const legacyDefaultProfile = () =>
+    pathModule.join(managedProfileState.legacyRoot, "browser-profile");
   const agentProfile = (agentId: string) =>
     pathModule.join(managedProfileState.root, "agents", agentId, "browser-profile");
-  const agentIdForProfile = (profileDir: string) => {
+  const agentIdForProfileUnder = (profileDir: string, root: string) => {
     const relative = pathModule.relative(
-      normalizeProfilePath(pathModule.join(managedProfileState.root, "agents")),
+      normalizeProfilePath(pathModule.join(root, "agents")),
       normalizeProfilePath(profileDir),
     );
     if (relative.startsWith("..") || pathModule.isAbsolute(relative)) return null;
@@ -65,6 +67,10 @@ vi.mock("../../src/browser/profilePaths.js", async (importOriginal) => {
     const agentId = parts[0]!;
     return resolvedAgentIdPattern.test(agentId) ? agentId : null;
   };
+  const agentIdForProfile = (profileDir: string) =>
+    agentIdForProfileUnder(profileDir, managedProfileState.root);
+  const agentIdForLegacyProfile = (profileDir: string) =>
+    agentIdForProfileUnder(profileDir, managedProfileState.legacyRoot);
   return {
     ...actual,
     defaultAskProBrowserProfileDir: () => defaultProfile(),
@@ -75,10 +81,16 @@ vi.mock("../../src/browser/profilePaths.js", async (importOriginal) => {
       }
       return agentProfile(agentId);
     },
+    ensureAskProBrowserProfileDir: async (agentId: string | null | undefined) =>
+      agentId ? agentProfile(agentId) : defaultProfile(),
     isAskProManagedBrowserProfileDir: (profileDir: string) =>
       normalizeProfilePath(profileDir) === normalizeProfilePath(defaultProfile()) ||
       agentIdForProfile(profileDir) !== null,
     askProAgentIdForManagedBrowserProfileDir: agentIdForProfile,
+    isLegacyAskProManagedBrowserProfileDir: (profileDir: string) =>
+      normalizeProfilePath(profileDir) === normalizeProfilePath(legacyDefaultProfile()) ||
+      agentIdForLegacyProfile(profileDir) !== null,
+    askProAgentIdForLegacyBrowserProfileDir: agentIdForLegacyProfile,
   };
 });
 vi.mock("../../src/ask-pro/responseZip.js", async (importOriginal) => {
@@ -96,7 +108,8 @@ const tempDirs: string[] = [];
 
 beforeEach(async () => {
   managedProfileState.root = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-managed-root-"));
-  tempDirs.push(managedProfileState.root);
+  managedProfileState.legacyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-legacy-root-"));
+  tempDirs.push(managedProfileState.root, managedProfileState.legacyRoot);
 });
 
 function testSharedProfileDir(): string {
@@ -105,6 +118,10 @@ function testSharedProfileDir(): string {
 
 function testAgentProfileDir(agentId: string): string {
   return path.join(managedProfileState.root, "agents", agentId, "browser-profile");
+}
+
+function testLegacyAgentProfileDir(agentId: string): string {
+  return path.join(managedProfileState.legacyRoot, "agents", agentId, "browser-profile");
 }
 
 afterEach(async () => {
@@ -1881,6 +1898,87 @@ describe("ask-pro browser runner", () => {
     expect(firstCall?.[1]).toMatchObject({
       manualLoginProfileDir: recordedProfile,
     });
+  });
+
+  test("reattach migrates exact legacy profile metadata and runtime hints", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-legacy-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Resume the legacy profile.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    const agentId = "review-t1-6d908a4714";
+    const legacyProfile = testLegacyAgentProfileDir(agentId);
+    const currentProfile = testAgentProfileDir(agentId);
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        agentId,
+        profileDir: legacyProfile,
+        runtime: {
+          chromePort: 9556,
+          chromeProfileRoot: legacyProfile,
+          userDataDir: legacyProfile,
+          tabUrl: "https://chatgpt.com/c/test-legacy",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await resumeAskProBrowserSession({ cwd, sessionId: session.id });
+
+    const resumeCall = resumeBrowserSessionMock.mock.calls[0] as unknown[] | undefined;
+    expect(resumeCall?.[0]).toMatchObject({
+      chromeProfileRoot: currentProfile,
+      userDataDir: currentProfile,
+    });
+    expect(resumeCall?.[1]).toMatchObject({
+      manualLoginProfileDir: currentProfile,
+    });
+    const metadata = JSON.parse(
+      await fs.readFile(path.join(session.dir, "browser.json"), "utf8"),
+    ) as { profileDir?: string; runtime?: { chromeProfileRoot?: string; userDataDir?: string } };
+    expect(metadata.profileDir).toBe(currentProfile);
+    expect(metadata.runtime).toMatchObject({
+      chromeProfileRoot: currentProfile,
+      userDataDir: currentProfile,
+    });
+  });
+
+  test("reattach rejects runtime profile hints outside the recorded profile", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-runtime-profile-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Reject an unrelated runtime profile.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        profileDir: testSharedProfileDir(),
+        runtime: {
+          chromePort: 9557,
+          userDataDir: path.join(cwd, "unrelated-profile"),
+          tabUrl: "https://chatgpt.com/c/test-unrelated",
+        },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      /runtime profile path is invalid/i,
+    );
+    expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
   });
 
   test("reattach rejects agent profile paths that do not match the stored agent id", async () => {

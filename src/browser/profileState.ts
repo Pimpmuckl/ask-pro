@@ -1,6 +1,6 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { delay } from "./utils.js";
@@ -119,6 +119,41 @@ function parseProfileRunLock(payload: string | null): ProfileRunLockRecord | nul
   }
 }
 
+export async function isBrowserProfileInUse(
+  userDataDir: string,
+  options: { ignoreLockId?: string } = {},
+): Promise<boolean> {
+  const lockPath = path.join(userDataDir, ASK_PRO_PROFILE_LOCK_FILENAME);
+  let lockPayload: string | null;
+  try {
+    lockPayload = await readFile(lockPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return true;
+    lockPayload = null;
+  }
+  let lock = parseProfileRunLock(lockPayload);
+  if (lockPayload !== null && !lock) {
+    await delay(200);
+    try {
+      lockPayload = await readFile(lockPath, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return true;
+      lockPayload = null;
+    }
+    lock = parseProfileRunLock(lockPayload);
+  }
+  if (lock && lock.lockId !== options.ignoreLockId && isProcessAlive(lock.pid)) return true;
+
+  const pid = await readChromePid(userDataDir);
+  const port = await readDevToolsPort(userDataDir);
+  const [owner, devTools] = await Promise.all([
+    isChromeUsingUserDataDir(userDataDir),
+    port ? verifyDevToolsReachable({ port, attempts: 1 }) : null,
+  ]);
+  if (owner === true || (pid && isProcessAlive(pid) && devTools?.ok)) return true;
+  return owner === null;
+}
+
 export async function acquireProfileRunLock(
   userDataDir: string,
   options: {
@@ -126,6 +161,8 @@ export async function acquireProfileRunLock(
     pollMs?: number;
     logger?: ProfileStateLogger;
     sessionId?: string;
+    requireExistingProfile?: boolean;
+    staleLockMode?: "remove" | "fail";
   },
 ): Promise<ProfileRunLock | null> {
   const timeoutMs = options.timeoutMs;
@@ -149,7 +186,11 @@ export async function acquireProfileRunLock(
         createdAt: new Date().toISOString(),
         sessionId: options.sessionId,
       };
-      await mkdir(path.dirname(lockPath), { recursive: true });
+      if (options.requireExistingProfile) {
+        await stat(userDataDir);
+      } else {
+        await mkdir(path.dirname(lockPath), { recursive: true });
+      }
       await writeFile(lockPath, JSON.stringify(payload), { encoding: "utf8", flag: "wx" });
       options.logger?.(`Acquired ask-pro profile lock at ${lockPath}`);
       return {
@@ -168,12 +209,18 @@ export async function acquireProfileRunLock(
         await delay(200);
         existing = parseProfileRunLock(await readFile(lockPath, "utf8").catch(() => null));
         if (!existing) {
+          if (options.staleLockMode === "fail") {
+            throw new Error("ask-pro profile lock is unreadable; refusing stale lock removal.");
+          }
           options.logger?.("ask-pro profile lock unreadable; deleting lockfile.");
           await rm(lockPath, { force: true }).catch(() => undefined);
           continue;
         }
       }
       if (!existing || !isProcessAlive(existing.pid)) {
+        if (options.staleLockMode === "fail") {
+          throw new Error("ask-pro profile lock owner is not alive; refusing stale lock removal.");
+        }
         await rm(lockPath, { force: true }).catch(() => undefined);
         continue;
       }
@@ -301,7 +348,7 @@ export async function cleanupStaleProfileState(
 
   // Extra safety: if Chrome is running with this profile (but with a different PID, e.g. user relaunched
   // without remote debugging), never delete lock files.
-  if (await isChromeUsingUserDataDir(userDataDir)) {
+  if ((await isChromeUsingUserDataDir(userDataDir)) === true) {
     logger?.("Detected running Chrome using this profile; skipping profile lock cleanup");
     return;
   }
@@ -318,10 +365,28 @@ export async function cleanupStaleProfileState(
   logger?.("Cleaned up stale Chrome profile locks");
 }
 
-async function isChromeUsingUserDataDir(userDataDir: string): Promise<boolean> {
+async function isChromeUsingUserDataDir(userDataDir: string): Promise<boolean | null> {
   if (process.platform === "win32") {
-    // On Windows, lockfiles are typically held open and removal should fail anyway; avoid expensive process scans.
-    return false;
+    try {
+      const { stdout } = await execFileAsync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "$ErrorActionPreference = 'Stop'; $match = Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(chrome|chromium|msedge)\\.exe$' -and $_.CommandLine -and $_.CommandLine.Contains($env:ASK_PRO_PROFILE_SCAN_PATH) -and $_.CommandLine.Contains('--user-data-dir') } | Select-Object -First 1; if ($match) { 'match' } else { 'scan-ok' }",
+        ],
+        {
+          env: { ...process.env, ASK_PRO_PROFILE_SCAN_PATH: userDataDir },
+          maxBuffer: 1024 * 1024,
+          windowsHide: true,
+        },
+      );
+      const result = String(stdout).trim();
+      return result === "match" ? true : result === "scan-ok" ? false : null;
+    } catch {
+      return null;
+    }
   }
 
   try {
@@ -339,7 +404,7 @@ async function isChromeUsingUserDataDir(userDataDir: string): Promise<boolean> {
       }
     }
   } catch {
-    // best effort
+    return null;
   }
   return false;
 }

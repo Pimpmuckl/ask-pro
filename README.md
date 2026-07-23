@@ -15,12 +15,15 @@ Add this repository as a Codex plugin marketplace:
 ```powershell
 codex plugin marketplace add Pimpmuckl/ask-pro
 ```
+
 Install the plugin or open `/plugins`, install `ask-pro`:
+
 ```powershell
 codex plugin add ask-pro@ask-pro
 ```
 
 Upgrade the plugin manually:
+
 ```powershell
 codex plugin marketplace upgrade ask-pro
 ```
@@ -46,7 +49,9 @@ marketplace install is needed for development. Do not edit
 Git marketplace installs cache the source checkout. If `ask-pro` is not on
 `PATH`, agents should use the cached runner under
 `~/.codex/plugins/cache/<marketplace>/ask-pro/<version>/scripts/run-cached-cli.mjs`.
-The first runner call may install dependencies and build `dist` in that cache.
+The runner copies the installed snapshot to a content-addressed runtime under
+`$CODEX_HOME/plugin-runtimes/ask-pro/`, then installs, builds, and runs there.
+The installed plugin cache remains immutable.
 
 ## Requirements
 
@@ -61,8 +66,13 @@ passwords, MFA codes, recovery codes, session cookies, or raw auth tokens.
 The default persistent browser profile is:
 
 ```text
-~/.agents/skills/ask-pro/browser-profile
+$CODEX_HOME/state/ask-pro/browser-profile
 ```
+
+Without `CODEX_HOME`, this is `~/.codex/state/ask-pro/browser-profile`.
+On first use, ask-pro moves an inactive legacy
+`~/.agents/skills/ask-pro/.../browser-profile` to the matching state path. It
+refuses to merge profiles or move one that is in use.
 
 Each new profile may need a human login once. On Windows, fresh runs for an
 auth-ready managed profile start minimized; login, resume/recovery, stale-auth,

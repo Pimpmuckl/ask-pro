@@ -14,8 +14,10 @@ import {
   askProAgentIdForManagedBrowserProfileDir,
   askProBrowserProfileDirForAgentId,
   defaultAskProBrowserProfileDir,
+  ensureAskProBrowserProfileDir,
   isAskProManagedBrowserProfileDir,
   isAskProStatePath,
+  legacyAskProBrowserProfileDirForAgentId,
   resolveAskProAgentId,
 } from "../../src/browser/profilePaths.js";
 
@@ -73,6 +75,107 @@ describe("resolveBrowserConfig", () => {
     const resolved = resolveBrowserConfig({ manualLogin: true });
 
     expect(resolved.manualLoginProfileDir).toBe(defaultAskProBrowserProfileDir());
+  });
+
+  test("keeps mutable profiles under CODEX_HOME with the standard fallback", () => {
+    const customHome = path.join(os.tmpdir(), "custom-codex-home");
+    vi.stubEnv("CODEX_HOME", customHome);
+    expect(defaultAskProBrowserProfileDir()).toBe(
+      path.join(customHome, "state", "ask-pro", "browser-profile"),
+    );
+    expect(askProBrowserProfileDirForAgentId("review-t1-59cd6bada6")).toBe(
+      path.join(
+        customHome,
+        "state",
+        "ask-pro",
+        "agents",
+        "review-t1-59cd6bada6",
+        "browser-profile",
+      ),
+    );
+
+    vi.stubEnv("CODEX_HOME", "");
+    expect(defaultAskProBrowserProfileDir()).toBe(
+      path.join(os.homedir(), ".codex", "state", "ask-pro", "browser-profile"),
+    );
+  });
+
+  test("migrates a legacy profile once and fails closed on active, collision, or failure", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-profile-migration-"));
+    tempDirs.push(root);
+    const fakeHome = path.join(root, "home");
+    const codexHome = path.join(root, "codex");
+    const options = { env: { CODEX_HOME: codexHome }, homeDir: fakeHome };
+    const target = path.join(codexHome, "state", "ask-pro", "browser-profile");
+    const legacy = legacyAskProBrowserProfileDirForAgentId(null, fakeHome);
+
+    expect(await ensureAskProBrowserProfileDir(null, options)).toBe(target);
+    expect(await fs.stat(target).catch(() => null)).toBeNull();
+
+    await fs.mkdir(target, { recursive: true });
+    expect(await ensureAskProBrowserProfileDir(null, options)).toBe(target);
+    await fs.rm(target, { recursive: true });
+
+    await fs.mkdir(legacy, { recursive: true });
+    await fs.writeFile(path.join(legacy, "Local State"), "opaque-profile-data");
+    expect(await ensureAskProBrowserProfileDir(null, options)).toBe(target);
+    expect(await fs.readFile(path.join(target, "Local State"), "utf8")).toBe("opaque-profile-data");
+    expect(await fs.stat(legacy).catch(() => null)).toBeNull();
+
+    const concurrentAgent = "concurrent-16f7b434ba";
+    const concurrentLegacy = legacyAskProBrowserProfileDirForAgentId(concurrentAgent, fakeHome);
+    await fs.mkdir(concurrentLegacy, { recursive: true });
+    const concurrent = await Promise.all([
+      ensureAskProBrowserProfileDir(concurrentAgent, options),
+      ensureAskProBrowserProfileDir(concurrentAgent, options),
+    ]);
+    expect(concurrent[0]).toBe(concurrent[1]);
+
+    await fs.mkdir(legacy, { recursive: true });
+    await fs.writeFile(
+      path.join(legacy, "ask-pro-automation.lock"),
+      JSON.stringify({ pid: process.pid, lockId: "active", createdAt: new Date().toISOString() }),
+    );
+    await expect(ensureAskProBrowserProfileDir(null, options)).rejects.toThrow(/both current/i);
+    await fs.rm(target, { recursive: true });
+    await expect(ensureAskProBrowserProfileDir(null, options)).rejects.toThrow(/in use/i);
+    expect(await fs.stat(legacy)).toBeTruthy();
+
+    await fs.rm(path.join(legacy, "ask-pro-automation.lock"));
+    await fs.writeFile(path.join(legacy, "chrome.pid"), `${process.pid}\n`);
+    expect(await ensureAskProBrowserProfileDir(null, options)).toBe(target);
+    expect(await fs.stat(legacy).catch(() => null)).toBeNull();
+
+    await fs.mkdir(legacy, { recursive: true });
+    await fs.mkdir(target, { recursive: true });
+    await expect(ensureAskProBrowserProfileDir(null, options)).rejects.toThrow(
+      /refusing to merge/i,
+    );
+    expect(await fs.stat(legacy)).toBeTruthy();
+    expect(await fs.stat(target)).toBeTruthy();
+
+    await fs.writeFile(
+      path.join(target, ".ask-pro-profile-migration"),
+      JSON.stringify({ pid: 2_147_483_647, createdAt: Date.now() - 301_000 }),
+    );
+    await fs.writeFile(path.join(legacy, "Local State"), "recreated-profile-data");
+    await expect(ensureAskProBrowserProfileDir(null, options)).rejects.toThrow(
+      /refusing to merge/i,
+    );
+    expect(await fs.readFile(path.join(legacy, "Local State"), "utf8")).toBe(
+      "recreated-profile-data",
+    );
+
+    await fs.rm(target, { recursive: true });
+    const blockedCodexHome = path.join(root, "blocked-codex-home");
+    await fs.writeFile(blockedCodexHome, "not a directory");
+    await expect(
+      ensureAskProBrowserProfileDir(null, {
+        env: { CODEX_HOME: blockedCodexHome },
+        homeDir: fakeHome,
+      }),
+    ).rejects.toThrow();
+    expect(await fs.stat(legacy)).toBeTruthy();
   });
 
   test("keeps ASK_PRO_AGENT_ID out of shared browser config defaults", () => {
@@ -199,10 +302,12 @@ describe("resolveBrowserConfig", () => {
   });
 
   test("does not overwrite unreadable Chrome preference JSON", async () => {
-    const userDataDir = await fs.mkdtemp(
-      path.join(os.homedir(), ".agents", "skills", "ask-pro", "test-language-"),
-    );
-    tempDirs.push(userDataDir);
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-language-root-"));
+    tempDirs.push(root);
+    vi.stubEnv("CODEX_HOME", root);
+    const stateDir = path.join(root, "state", "ask-pro");
+    await fs.mkdir(stateDir, { recursive: true });
+    const userDataDir = await fs.mkdtemp(path.join(stateDir, "test-language-"));
     const prefs = path.join(userDataDir, "Default", "Preferences");
     await fs.mkdir(path.dirname(prefs), { recursive: true });
     await fs.writeFile(prefs, "{not valid json", "utf8");
