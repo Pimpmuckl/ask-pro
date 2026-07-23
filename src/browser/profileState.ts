@@ -119,6 +119,21 @@ function parseProfileRunLock(payload: string | null): ProfileRunLockRecord | nul
   }
 }
 
+export async function isBrowserProfileInUse(userDataDir: string): Promise<boolean> {
+  const lockPayload = await readFile(
+    path.join(userDataDir, ASK_PRO_PROFILE_LOCK_FILENAME),
+    "utf8",
+  ).catch(() => null);
+  const lock = parseProfileRunLock(lockPayload);
+  if (lockPayload !== null && (!lock || isProcessAlive(lock.pid))) return true;
+
+  const pid = await readChromePid(userDataDir);
+  if (pid && isProcessAlive(pid)) return true;
+
+  const port = await readDevToolsPort(userDataDir);
+  return port ? (await verifyDevToolsReachable({ port, attempts: 1 })).ok : false;
+}
+
 export async function acquireProfileRunLock(
   userDataDir: string,
   options: {

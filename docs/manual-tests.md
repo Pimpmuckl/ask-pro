@@ -12,12 +12,14 @@ minutes or longer for Pro thinking.
 - ChatGPT login completed in the ask-pro browser profile:
 
   ```text
-  ~/.agents/skills/ask-pro/browser-profile
+  $CODEX_HOME/state/ask-pro/browser-profile
   ```
 
 - For agent-isolation checks, set `ASK_PRO_AGENT_ID` to a disposable value and
   expect the browser profile under
-  `~/.agents/skills/ask-pro/agents/<id>-<hash>/browser-profile`.
+  `$CODEX_HOME/state/ask-pro/agents/<id>-<hash>/browser-profile`.
+- `CODEX_HOME` defaults to `~/.codex`. A legacy profile is migrated only when
+  inactive and the destination does not already exist.
 
 - Do not click ChatGPT's `Answer now` button during Pro thinking. That skips the
   long-thinking path this tool is trying to preserve.
