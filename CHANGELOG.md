@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Install cached-runtime dependencies at their final content-addressed path so
+  pnpm's Windows junctions remain valid after publication.
 - Move browser profiles and mutable global state to
   `$CODEX_HOME/state/ask-pro/`, safely migrate inactive legacy profiles once,
   and run cached-plugin builds and CLI processes from content-addressed

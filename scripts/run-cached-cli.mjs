@@ -12,6 +12,8 @@ const sourceScript = fileURLToPath(import.meta.url);
 const sourceRoot = path.resolve(path.dirname(sourceScript), "..");
 const projectCwd = process.cwd();
 const codexHome = path.resolve(process.env.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex"));
+const BUILDING_MARKER = ".ask-pro-runtime-building";
+const BUILD_HEARTBEAT_STALE_MS = 30_000;
 const runtimeRoot = await ensureRuntime();
 const cliEntry = path.join(runtimeRoot, "dist", "bin", "ask-pro-cli.js");
 const launcher = `${quoteCommandPart(process.execPath)} ${quoteCommandPart(sourceScript)} --`;
@@ -45,6 +47,7 @@ async function ensureRuntime() {
   const parent = path.join(codexHome, "plugin-runtimes", "ask-pro");
   fs.mkdirSync(parent, { recursive: true });
   pruneStaging(parent);
+  pruneRuntimes(parent, null, true);
   const staging = path.join(parent, `.staging-${process.pid}-${randomUUID()}`);
   try {
     fs.cpSync(sourceRoot, staging, {
@@ -55,22 +58,45 @@ async function ensureRuntime() {
     const contentHash = hashSource(staging);
     const version = safeKeyPart(packageJson.version || "0.0.0");
     const target = path.join(parent, `${version}-${contentHash.slice(0, 16)}`);
-    if (fs.existsSync(path.join(target, ".ask-pro-runtime-ready"))) {
+    const ready = path.join(target, ".ask-pro-runtime-ready");
+    if (fs.existsSync(ready)) {
       fs.rmSync(staging, { recursive: true, force: true });
-      fs.utimesSync(path.join(target, ".ask-pro-runtime-ready"), new Date(), new Date());
+      fs.rmSync(path.join(target, BUILDING_MARKER), { force: true });
+      fs.utimesSync(ready, new Date(), new Date());
       pruneRuntimes(parent, target);
       return target;
     }
-    await bootstrap(staging, packageJson);
     fs.writeFileSync(
-      path.join(staging, ".ask-pro-runtime-ready"),
-      `${JSON.stringify({ version, contentHash }, null, 2)}\n`,
+      path.join(staging, BUILDING_MARKER),
+      JSON.stringify({ pid: process.pid, createdAt: Date.now() }),
     );
     try {
       fs.renameSync(staging, target);
     } catch (error) {
-      if (!fs.existsSync(path.join(target, ".ask-pro-runtime-ready"))) throw error;
       fs.rmSync(staging, { recursive: true, force: true });
+      if (!(await waitForRuntime(target))) throw error;
+      fs.utimesSync(ready, new Date(), new Date());
+      pruneRuntimes(parent, target);
+      return target;
+    }
+    const marker = path.join(target, BUILDING_MARKER);
+    const heartbeat = setInterval(() => {
+      try {
+        fs.utimesSync(marker, new Date(), new Date());
+      } catch {
+        // bootstrap cleanup owns the target
+      }
+    }, 5_000);
+    heartbeat.unref();
+    try {
+      await bootstrap(target, packageJson);
+      fs.writeFileSync(ready, `${JSON.stringify({ version, contentHash }, null, 2)}\n`);
+      fs.rmSync(marker, { force: true });
+    } catch (error) {
+      fs.rmSync(target, { recursive: true, force: true });
+      throw error;
+    } finally {
+      clearInterval(heartbeat);
     }
     pruneRuntimes(parent, target);
     return target;
@@ -78,6 +104,15 @@ async function ensureRuntime() {
     fs.rmSync(staging, { recursive: true, force: true });
     throw error;
   }
+}
+
+async function waitForRuntime(target) {
+  const ready = path.join(target, ".ask-pro-runtime-ready");
+  while (!fs.existsSync(ready)) {
+    if (!hasLiveBuilder(target) && !fs.existsSync(ready)) return false;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return true;
 }
 
 function pruneStaging(parent) {
@@ -93,7 +128,7 @@ function pruneStaging(parent) {
   }
 }
 
-function pruneRuntimes(parent, keep) {
+function pruneRuntimes(parent, keep, incompleteOnly = false) {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   for (const entry of fs.readdirSync(parent, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
@@ -102,13 +137,32 @@ function pruneRuntimes(parent, keep) {
     if (root === keep) continue;
     try {
       if (entry.name.startsWith(".staging-")) continue;
-      if (!fs.existsSync(ready) || fs.statSync(ready).mtimeMs >= cutoff || hasLiveLease(root)) {
+      if (!fs.existsSync(ready)) {
+        if (!hasLiveBuilder(root) && !fs.existsSync(ready)) {
+          fs.rmSync(root, { recursive: true, force: true });
+        }
+        continue;
+      }
+      if (incompleteOnly) continue;
+      if (fs.statSync(ready).mtimeMs >= cutoff || hasLiveLease(root)) {
         continue;
       }
       fs.rmSync(root, { recursive: true, force: true });
     } catch {
       // best-effort cleanup must not block the selected runtime
     }
+  }
+}
+
+function hasLiveBuilder(root) {
+  try {
+    const marker = path.join(root, BUILDING_MARKER);
+    const { pid } = JSON.parse(fs.readFileSync(marker, "utf8"));
+    return (
+      isProcessAlive(pid) && Date.now() - fs.statSync(marker).mtimeMs < BUILD_HEARTBEAT_STALE_MS
+    );
+  } catch {
+    return false;
   }
 }
 
