@@ -120,17 +120,23 @@ function parseProfileRunLock(payload: string | null): ProfileRunLockRecord | nul
 }
 
 export async function isBrowserProfileInUse(userDataDir: string): Promise<boolean> {
-  let lockPayload = await readFile(
-    path.join(userDataDir, ASK_PRO_PROFILE_LOCK_FILENAME),
-    "utf8",
-  ).catch(() => null);
+  const lockPath = path.join(userDataDir, ASK_PRO_PROFILE_LOCK_FILENAME);
+  let lockPayload: string | null;
+  try {
+    lockPayload = await readFile(lockPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return true;
+    lockPayload = null;
+  }
   let lock = parseProfileRunLock(lockPayload);
   if (lockPayload !== null && !lock) {
     await delay(200);
-    lockPayload = await readFile(
-      path.join(userDataDir, ASK_PRO_PROFILE_LOCK_FILENAME),
-      "utf8",
-    ).catch(() => null);
+    try {
+      lockPayload = await readFile(lockPath, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return true;
+      lockPayload = null;
+    }
     lock = parseProfileRunLock(lockPayload);
   }
   if (lock && isProcessAlive(lock.pid)) return true;
@@ -353,7 +359,7 @@ async function isChromeUsingUserDataDir(userDataDir: string): Promise<boolean | 
           "-NoProfile",
           "-NonInteractive",
           "-Command",
-          "$match = Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(chrome|chromium|msedge)\\.exe$' -and $_.CommandLine -and $_.CommandLine.Contains($env:ASK_PRO_PROFILE_SCAN_PATH) -and $_.CommandLine.Contains('--user-data-dir') } | Select-Object -First 1; if ($match) { 'yes' }",
+          "$ErrorActionPreference = 'Stop'; $match = Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(chrome|chromium|msedge)\\.exe$' -and $_.CommandLine -and $_.CommandLine.Contains($env:ASK_PRO_PROFILE_SCAN_PATH) -and $_.CommandLine.Contains('--user-data-dir') } | Select-Object -First 1; if ($match) { 'match' } else { 'scan-ok' }",
         ],
         {
           env: { ...process.env, ASK_PRO_PROFILE_SCAN_PATH: userDataDir },
@@ -361,7 +367,8 @@ async function isChromeUsingUserDataDir(userDataDir: string): Promise<boolean | 
           windowsHide: true,
         },
       );
-      return String(stdout).trim() === "yes";
+      const result = String(stdout).trim();
+      return result === "match" ? true : result === "scan-ok" ? false : null;
     } catch {
       return null;
     }

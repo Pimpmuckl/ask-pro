@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
-import { cp, mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { isBrowserProfileInUse } from "./profileState.js";
+import { isBrowserProfileInUse, isProcessAlive } from "./profileState.js";
 
 const RESOLVED_AGENT_ID_PATTERN = /^[a-z0-9._-]+-[a-f0-9]{10}$/;
 const MIGRATION_MARKER = ".ask-pro-profile-migration";
@@ -57,7 +57,7 @@ export async function ensureAskProBrowserProfileDir(
   const staging = `${target}.migrating-${process.pid}-${randomUUID()}`;
   try {
     await cp(legacy, staging, { recursive: true, errorOnExist: true });
-    await writeFile(path.join(staging, MIGRATION_MARKER), "");
+    await writeFile(path.join(staging, MIGRATION_MARKER), JSON.stringify({ pid: process.pid }));
     await rename(staging, target);
   } catch (error) {
     await rm(staging, { recursive: true, force: true }).catch(() => undefined);
@@ -137,15 +137,21 @@ async function exists(filePath: string): Promise<boolean> {
 }
 
 async function waitForConcurrentMigration(target: string, legacy: string): Promise<boolean> {
-  if (!(await exists(path.join(target, MIGRATION_MARKER)))) return false;
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  const marker = path.join(target, MIGRATION_MARKER);
+  const owner = await readFile(marker, "utf8")
+    .then((raw) => JSON.parse(raw) as { pid?: number })
+    .catch(() => null);
+  if (!owner?.pid || !Number.isFinite(owner.pid)) return false;
+  while (isProcessAlive(owner.pid)) {
     if (!(await exists(legacy))) {
-      await rm(path.join(target, MIGRATION_MARKER), { force: true }).catch(() => undefined);
+      await rm(marker, { force: true }).catch(() => undefined);
       return true;
     }
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  return false;
+  if (await exists(legacy)) return false;
+  await rm(marker, { force: true }).catch(() => undefined);
+  return exists(target);
 }
 
 export function resolveAskProAgentId(env: NodeJS.ProcessEnv = process.env): string | null {
