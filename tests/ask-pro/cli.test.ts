@@ -1068,14 +1068,18 @@ describe("ask-pro cli", () => {
         cachedCli,
         [
           'import { fileURLToPath } from "node:url";',
-          `console.log(JSON.stringify({ entry: fileURLToPath(import.meta.url), args: process.argv.slice(2), launcher: process.env.ASK_PRO_SOURCE_CHECKOUT_LAUNCHER, codexHome: process.env.CODEX_HOME, cwd: process.cwd(), revision: ${revision} }));`,
+          `console.log(JSON.stringify({ entry: fileURLToPath(import.meta.url), args: process.argv.slice(2), launcher: process.env.ASK_PRO_SOURCE_CHECKOUT_LAUNCHER, codexHome: process.env.CODEX_HOME, initCwd: process.env.INIT_CWD, cwd: process.cwd(), revision: ${revision} }));`,
           "",
         ].join("\n"),
       );
     await writeCli(1);
 
     const before = await snapshotFiles(cacheRoot);
-    const env = { ...process.env, CODEX_HOME: path.relative(projectCwd, codexHome) };
+    const env = {
+      ...process.env,
+      CODEX_HOME: path.relative(projectCwd, codexHome),
+      INIT_CWD: path.join(root, "stale-init-cwd"),
+    };
     const first = JSON.parse(
       (
         await execFileAsync(process.execPath, [cachedRunner, "--", "status"], {
@@ -1088,6 +1092,7 @@ describe("ask-pro cli", () => {
       args: string[];
       launcher: string;
       codexHome: string;
+      initCwd: string;
       cwd: string;
       revision: number;
     };
@@ -1108,6 +1113,7 @@ describe("ask-pro cli", () => {
     expect(second.args).toEqual(["resume"]);
     expect(first.launcher).toContain(cachedRunner);
     expect(first.codexHome).toBe(codexHome);
+    expect(first.initCwd).toBe(projectCwd);
     expect(first.cwd).toBe(projectCwd);
 
     await writeCli(2);

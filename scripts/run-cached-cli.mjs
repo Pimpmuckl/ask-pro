@@ -24,6 +24,7 @@ process.exitCode = await run(
     env: {
       ...process.env,
       CODEX_HOME: codexHome,
+      INIT_CWD: projectCwd,
       ASK_PRO_SOURCE_CHECKOUT_LAUNCHER: launcher,
     },
   },

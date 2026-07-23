@@ -120,18 +120,22 @@ function parseProfileRunLock(payload: string | null): ProfileRunLockRecord | nul
 }
 
 export async function isBrowserProfileInUse(userDataDir: string): Promise<boolean> {
-  const lockPayload = await readFile(
+  let lockPayload = await readFile(
     path.join(userDataDir, ASK_PRO_PROFILE_LOCK_FILENAME),
     "utf8",
   ).catch(() => null);
-  const lock = parseProfileRunLock(lockPayload);
-  if (lockPayload !== null && (!lock || isProcessAlive(lock.pid))) return true;
+  let lock = parseProfileRunLock(lockPayload);
+  if (lockPayload !== null && !lock) {
+    await delay(200);
+    lockPayload = await readFile(
+      path.join(userDataDir, ASK_PRO_PROFILE_LOCK_FILENAME),
+      "utf8",
+    ).catch(() => null);
+    lock = parseProfileRunLock(lockPayload);
+  }
+  if (lock && isProcessAlive(lock.pid)) return true;
 
-  const pid = await readChromePid(userDataDir);
-  if (pid && isProcessAlive(pid)) return true;
-
-  const port = await readDevToolsPort(userDataDir);
-  return port ? (await verifyDevToolsReachable({ port, attempts: 1 })).ok : false;
+  return isChromeUsingUserDataDir(userDataDir);
 }
 
 export async function acquireProfileRunLock(
@@ -335,8 +339,25 @@ export async function cleanupStaleProfileState(
 
 async function isChromeUsingUserDataDir(userDataDir: string): Promise<boolean> {
   if (process.platform === "win32") {
-    // On Windows, lockfiles are typically held open and removal should fail anyway; avoid expensive process scans.
-    return false;
+    try {
+      const { stdout } = await execFileAsync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "$match = Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(chrome|chromium|msedge)\\.exe$' -and $_.CommandLine -and $_.CommandLine.Contains($env:ASK_PRO_PROFILE_SCAN_PATH) -and $_.CommandLine.Contains('--user-data-dir') } | Select-Object -First 1; if ($match) { 'yes' }",
+        ],
+        {
+          env: { ...process.env, ASK_PRO_PROFILE_SCAN_PATH: userDataDir },
+          maxBuffer: 1024 * 1024,
+          windowsHide: true,
+        },
+      );
+      return String(stdout).trim() === "yes";
+    } catch {
+      return false;
+    }
   }
 
   try {
