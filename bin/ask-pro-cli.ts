@@ -6,6 +6,7 @@ import { Command, Option } from "commander";
 import {
   createAskProSession,
   getAskProSessionPaths,
+  pruneExpiredAskProSessions,
   type AskProStatusFile,
   readAskProAnswer,
   readAskProStatus,
@@ -78,6 +79,7 @@ await program.parseAsync(process.argv);
 
 async function runAskPro(question: string, options: AskProOptions): Promise<void> {
   const cwd = resolveProjectCwd(options);
+  await pruneExpiredAskProSessions({ cwd });
   if (options.status !== undefined) {
     const { status } = await readAskProStatus({ cwd, sessionId: optionSessionId(options.status) });
     printStatusRecord(status, {

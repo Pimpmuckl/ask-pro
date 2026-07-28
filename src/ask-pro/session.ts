@@ -86,6 +86,7 @@ const DEFAULT_EXCLUDES = [
   ".git/**",
 ];
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,127}$/;
+const SESSION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function createAskProSession({
   cwd,
@@ -205,6 +206,56 @@ export function getAskProSessionPaths(cwd: string, sessionId: string): AskProSes
     status: path.join(dir, "status.json"),
     log: path.join(dir, "log.txt"),
   };
+}
+
+export async function pruneExpiredAskProSessions({
+  cwd,
+  now = Date.now(),
+}: {
+  cwd: string;
+  now?: number;
+}): Promise<number> {
+  const root = getAskProSessionsRoot(cwd);
+  let entries;
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return 0;
+    throw error;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !isValidAskProSessionId(entry.name)) continue;
+    const sessionDir = resolveAskProSessionDir(cwd, entry.name);
+    let createdAtMs;
+    try {
+      createdAtMs = await readSessionRetentionTimestamp(sessionDir);
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") continue;
+      throw error;
+    }
+    if (createdAtMs > now - SESSION_RETENTION_MS) continue;
+
+    try {
+      await fs.rm(sessionDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+      removed += 1;
+    } catch (error) {
+      if (
+        isNodeError(error) &&
+        ["ENOENT", "EBUSY", "EACCES", "EPERM", "ENOTEMPTY"].includes(error.code ?? "")
+      ) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  return removed;
 }
 
 export async function updateAskProStatus({
@@ -353,6 +404,19 @@ async function findLatestSessionId(cwd: string): Promise<string> {
     throw new Error("No ask-pro sessions found.");
   }
   return latest;
+}
+
+async function readSessionRetentionTimestamp(sessionDir: string): Promise<number> {
+  try {
+    const status = JSON.parse(
+      await fs.readFile(path.join(sessionDir, "status.json"), "utf8"),
+    ) as Partial<AskProStatusFile>;
+    const createdAt = typeof status.createdAt === "string" ? Date.parse(status.createdAt) : NaN;
+    if (Number.isFinite(createdAt)) return createdAt;
+  } catch {
+    // Fall back to the directory timestamp for damaged legacy sessions.
+  }
+  return (await fs.stat(sessionDir)).mtimeMs;
 }
 
 async function readSessionCreatedAt(

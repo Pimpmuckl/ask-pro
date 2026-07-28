@@ -95,7 +95,12 @@ and resolve accepted IDs only below `.ask-pro/sessions/<session-id>/`.
 
 ## Retention
 
-Do not auto-delete sessions by default. Long-running Pro work must be replayable and harvestable.
+At the start of every invocation, ask-pro permanently deletes each session
+directory at least seven days old. Status does not matter: answers,
+manifests, logs, context bundles, downloads, extracted Pro output, and unfinished
+session state are all removed together. Because ask-pro is a short-lived CLI,
+expiry is enforced the next time ask-pro runs rather than by a background
+process.
 
 `browser.json` records the exact browser profile path used for the run. When
 `ASK_PRO_AGENT_ID` is set, that path is agent-specific so reattach uses the same

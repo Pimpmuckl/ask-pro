@@ -147,7 +147,9 @@ Common options:
 - `--no-temporary`: use normal ChatGPT for better recovery.
 - `--verbose`: print browser automation diagnostics.
 
-Session data lives under `.ask-pro/sessions/<session-id>/`.
+Session data lives under `.ask-pro/sessions/<session-id>/`. At the start of each
+invocation, ask-pro permanently deletes entire session directories at least
+seven days old, regardless of status.
 
 ## Development
 
