@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   createAskProSession,
   getAskProSessionPaths,
+  pruneExpiredAskProSessions,
   readAskProAnswer,
   readAskProStatus,
   updateAskProStatus,
@@ -167,6 +168,53 @@ describe("ask-pro sessions", () => {
     await expect(readAskProStatus({ cwd })).resolves.toMatchObject({
       status: { sessionId: second.id },
     });
+  });
+
+  test("deletes entire expired sessions regardless of status and preserves newer sessions", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-session-retention-"));
+    tempDirs.push(cwd);
+    const now = Date.parse("2026-07-28T12:00:00.000Z");
+    const expired = await createAskProSession({
+      cwd,
+      question: "Old waiting request.",
+      filePatterns: [],
+      dryRun: true,
+    });
+    const current = await createAskProSession({
+      cwd,
+      question: "Recent completed request.",
+      filePatterns: [],
+      dryRun: true,
+    });
+    for (const [session, status, createdAt] of [
+      [expired, "WAITING", new Date(now - 8 * 24 * 60 * 60 * 1000).toISOString()],
+      [current, "COMPLETED", new Date(now - 6 * 24 * 60 * 60 * 1000).toISOString()],
+    ] as const) {
+      const statusPath = path.join(session.dir, "status.json");
+      const statusFile = JSON.parse(await fs.readFile(statusPath, "utf8")) as Record<
+        string,
+        unknown
+      >;
+      await fs.writeFile(
+        statusPath,
+        `${JSON.stringify({ ...statusFile, status, createdAt }, null, 2)}\n`,
+        "utf8",
+      );
+    }
+    await fs.mkdir(path.join(expired.dir, "pro-output"), { recursive: true });
+    await fs.writeFile(path.join(expired.dir, "pro-output", "TASKS.json"), "{}\n");
+
+    const orphanDir = path.join(cwd, ".ask-pro", "sessions", "legacy-orphan");
+    await fs.mkdir(orphanDir);
+    await fs.writeFile(path.join(orphanDir, "ANSWER.md"), "orphaned answer\n");
+    const orphanTime = new Date(now - 9 * 24 * 60 * 60 * 1000);
+    await fs.utimes(orphanDir, orphanTime, orphanTime);
+
+    await expect(pruneExpiredAskProSessions({ cwd, now })).resolves.toBe(2);
+    await expect(fs.stat(expired.dir)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(fs.stat(orphanDir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await fs.stat(current.dir)).isDirectory()).toBe(true);
+    await expect(fs.stat(path.join(current.dir, "CONTEXT.zip"))).resolves.toBeDefined();
   });
 
   test("rejects path-like session ids before resolving session files", async () => {

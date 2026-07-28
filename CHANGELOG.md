@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Permanently delete entire ask-pro session directories at least seven days old
+  on the next invocation, regardless of status or stored contents.
 - Fall back to a verified copy when Windows sharing handles block legacy
   browser-profile migration, retaining cleanup-denied legacy directories.
 - Install cached-runtime dependencies at their final content-addressed path so

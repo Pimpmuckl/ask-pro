@@ -51,6 +51,13 @@ describe("ask-pro cli", () => {
     tempDirs.push(cwd);
     await fs.mkdir(path.join(cwd, "src"), { recursive: true });
     await fs.writeFile(path.join(cwd, "src", "a.ts"), "export const a = 1;\n");
+    const expiredDir = path.join(cwd, ".ask-pro", "sessions", "expired-session");
+    await fs.mkdir(expiredDir, { recursive: true });
+    await fs.writeFile(
+      path.join(expiredDir, "status.json"),
+      `${JSON.stringify({ createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) })}\n`,
+    );
+    await fs.writeFile(path.join(expiredDir, "ANSWER.md"), "expired\n");
 
     const cli = path.join(process.cwd(), "bin", "ask-pro-cli.ts");
     const tsxLoader = pathToFileURL(
@@ -71,6 +78,7 @@ describe("ask-pro cli", () => {
     expect(stdout).not.toContain("session created");
     const sessions = await fs.readdir(path.join(cwd, ".ask-pro", "sessions"));
     expect(sessions).toHaveLength(1);
+    await expect(fs.stat(expiredDir)).rejects.toMatchObject({ code: "ENOENT" });
     const statusRaw = await fs.readFile(
       path.join(cwd, ".ask-pro", "sessions", sessions[0]!, "status.json"),
       "utf8",
