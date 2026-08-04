@@ -1,6 +1,6 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { delay } from "./utils.js";
@@ -15,6 +15,7 @@ const DEVTOOLS_ACTIVE_PORT_RELATIVE_PATHS = [
 
 const CHROME_PID_FILENAME = "chrome.pid";
 const ASK_PRO_PROFILE_LOCK_FILENAME = "ask-pro-automation.lock";
+const ASK_PRO_RUN_LEASE_DIRNAME = "ask-pro-browser-runs";
 
 const execFileAsync = promisify(execFile);
 
@@ -105,6 +106,62 @@ interface ProfileRunLockRecord {
   lockId: string;
   createdAt: string;
   sessionId?: string;
+}
+
+export interface ManagedChromeRunLease {
+  path: string;
+}
+
+export async function createManagedChromeRunLease(
+  userDataDir: string,
+): Promise<ManagedChromeRunLease> {
+  const leaseId = randomUUID();
+  const leaseDir = path.join(userDataDir, ASK_PRO_RUN_LEASE_DIRNAME);
+  const leasePath = path.join(leaseDir, `${process.pid}-${leaseId}.lease`);
+  await mkdir(leaseDir, { recursive: true });
+  await writeFile(leasePath, "", { encoding: "utf8", flag: "wx" });
+  return { path: leasePath };
+}
+
+export async function releaseManagedChromeRunLeaseAndCountPeers(
+  userDataDir: string,
+  lease: ManagedChromeRunLease,
+  logger?: ProfileStateLogger,
+): Promise<number | null> {
+  try {
+    await rm(lease.path, { force: true });
+  } catch (error) {
+    logger?.(`Failed to release ask-pro browser run lease: ${String(error)}`);
+    return null;
+  }
+
+  const leaseDir = path.join(userDataDir, ASK_PRO_RUN_LEASE_DIRNAME);
+  let entries;
+  try {
+    entries = await readdir(leaseDir, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return 0;
+    logger?.(`Failed to inspect ask-pro browser run leases: ${String(error)}`);
+    return null;
+  }
+
+  let peers = 0;
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".lease")) continue;
+    const leasePath = path.join(leaseDir, entry.name);
+    const pid = Number(entry.name.match(/^(\d+)-/)?.[1]);
+    if (!Number.isInteger(pid) || pid <= 0 || !isProcessAlive(pid)) {
+      try {
+        await rm(leasePath, { force: true });
+      } catch (error) {
+        logger?.(`Failed to remove stale ask-pro browser run lease: ${String(error)}`);
+        return null;
+      }
+      continue;
+    }
+    peers += 1;
+  }
+  return peers;
 }
 
 function parseProfileRunLock(payload: string | null): ProfileRunLockRecord | null {

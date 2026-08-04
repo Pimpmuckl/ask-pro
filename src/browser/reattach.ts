@@ -1,4 +1,5 @@
 import CDP from "chrome-remote-interface";
+import type { LaunchedChrome } from "chrome-launcher";
 import os from "node:os";
 import path from "node:path";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
@@ -23,14 +24,26 @@ import {
   hideChromeWindow,
   connectToRemoteChromeTarget,
   listRemoteChromeTargets,
+  closeRemoteChromeTarget,
   closeChromeGracefully,
+  connectWithNewTab,
+  closeTab,
+  maybeReuseRunningChrome,
+  releaseChromeProcessHandle,
 } from "./chromeLifecycle.js";
-import { resolveBrowserConfig } from "./config.js";
+import { DEFAULT_BROWSER_CONFIG, resolveBrowserConfig } from "./config.js";
 import { defaultAskProBrowserProfileDir } from "./profilePaths.js";
 import { applyPageLanguageOverrides, seedChromeProfileLanguage } from "./language.js";
 import { syncCookies } from "./cookies.js";
 import { CHATGPT_URL } from "./constants.js";
-import { cleanupStaleProfileState, verifyDevToolsReachable } from "./profileState.js";
+import type { ManagedChromeRunLease } from "./profileState.js";
+import {
+  acquireProfileRunLock,
+  cleanupStaleProfileState,
+  createManagedChromeRunLease,
+  releaseManagedChromeRunLeaseAndCountPeers,
+  verifyDevToolsReachable,
+} from "./profileState.js";
 import { readDevToolsActivePortInfo } from "./detect.js";
 import {
   pickTarget,
@@ -69,6 +82,101 @@ export interface ReattachResult {
   keepBrowserOpen?: boolean;
 }
 
+interface ReattachRunLease {
+  userDataDir: string;
+  timeoutMs: number;
+  lease: ManagedChromeRunLease;
+}
+
+function lifecycleLockTimeout(timeoutMs: number | undefined): number {
+  return timeoutMs && timeoutMs > 0
+    ? timeoutMs
+    : (DEFAULT_BROWSER_CONFIG.profileLockTimeoutMs ?? 300_000);
+}
+
+async function acquireReattachRunLease(
+  userDataDir: string,
+  timeoutMs: number | undefined,
+  logger: BrowserLogger,
+): Promise<ReattachRunLease | null> {
+  const effectiveTimeoutMs = lifecycleLockTimeout(timeoutMs);
+  const lock = await acquireProfileRunLock(userDataDir, { timeoutMs: effectiveTimeoutMs, logger });
+  try {
+    return {
+      userDataDir,
+      timeoutMs: effectiveTimeoutMs,
+      lease: await createManagedChromeRunLease(userDataDir),
+    };
+  } finally {
+    await lock?.release();
+  }
+}
+
+async function releaseReattachRunLease(
+  runLease: ReattachRunLease | null,
+  logger: BrowserLogger,
+  onLastRun?: () => Promise<void>,
+): Promise<number | null> {
+  if (!runLease) return 0;
+  try {
+    const lock = await acquireProfileRunLock(runLease.userDataDir, {
+      timeoutMs: runLease.timeoutMs,
+      logger,
+    });
+    try {
+      const peerRunCount = await releaseManagedChromeRunLeaseAndCountPeers(
+        runLease.userDataDir,
+        runLease.lease,
+        logger,
+      );
+      if (peerRunCount === 0) await onLastRun?.();
+      return peerRunCount;
+    } finally {
+      await lock?.release();
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger(`Failed to resolve shared Chrome ownership; retaining browser (${message})`);
+    return null;
+  }
+}
+
+async function closeManagedChromeIfUnused(
+  chrome: LaunchedChrome & { host?: string },
+  userDataDir: string,
+  inspectRemainingPages: boolean,
+  logger: BrowserLogger,
+): Promise<void> {
+  if (inspectRemainingPages) {
+    try {
+      const targets = await listRemoteChromeTargets({
+        host: chrome.host ?? "127.0.0.1",
+        port: chrome.port,
+      });
+      if (targets.some((target) => target.type === "page")) {
+        releaseChromeProcessHandle(chrome);
+        return;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger(`Failed to inspect remaining Chrome tabs; retaining browser (${message})`);
+      releaseChromeProcessHandle(chrome);
+      return;
+    }
+  }
+  try {
+    await closeChromeGracefully(chrome, logger);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger(`Failed to close managed Chrome; retaining browser (${message})`);
+    releaseChromeProcessHandle(chrome);
+    return;
+  }
+  await cleanupStaleProfileState(userDataDir, logger, { lockRemovalMode: "never" }).catch(
+    () => undefined,
+  );
+}
+
 export async function resumeBrowserSession(
   runtime: BrowserRuntimeMetadata,
   config: BrowserSessionConfig | undefined,
@@ -92,10 +200,23 @@ export async function resumeBrowserSession(
     return recoverWithRelaunchMode(runtime, config);
   }
 
+  const resolvedConfig = resolveBrowserConfig(config ?? {});
+  const directUserDataDir = resolvedConfig.manualLogin
+    ? !resolvedConfig.remoteChrome && runtime.userDataDir
+      ? runtime.userDataDir
+      : null
+    : null;
+  let reattachRunLease = directUserDataDir
+    ? await acquireReattachRunLease(directUserDataDir, resolvedConfig.profileLockTimeoutMs, logger)
+    : null;
+  let closeConnection: (() => Promise<void>) | null = null;
+
   try {
     const liveRuntime = await refreshAttachRuntime(runtime, logger).catch(() => runtime);
     if (!liveRuntime.chromePort && !liveRuntime.chromeBrowserWSEndpoint) {
       logger("Saved Chrome runtime metadata is stale; reopening browser to locate the session.");
+      await releaseReattachRunLease(reattachRunLease, logger);
+      reattachRunLease = null;
       return recoverWithRelaunchMode(runtime, config);
     }
     const host = liveRuntime.chromeHost ?? "127.0.0.1";
@@ -135,6 +256,13 @@ export async function resumeBrowserSession(
             )) as unknown as ChromeClient,
             close: async () => undefined,
           } as const);
+    closeConnection = connection.close;
+    const connectedTargetId = "targetId" in connection ? connection.targetId : target?.targetId;
+    const ownsConnectedTarget = Boolean(
+      !resolvedConfig.browserTabRef &&
+      liveRuntime.chromeTargetId &&
+      connectedTargetId === liveRuntime.chromeTargetId,
+    );
     const client: ChromeClient = connection.client;
     const { Runtime, DOM, Page, Input } = client;
     if (Runtime?.enable) {
@@ -215,6 +343,34 @@ export async function resumeBrowserSession(
     });
 
     await connection.close().catch(() => undefined);
+    closeConnection = null;
+    const keepBrowserOpen = Boolean(
+      resolvedConfig.keepBrowser ||
+      resolvedConfig.browserTabRef ||
+      afterAnswerResult?.keepBrowserOpen,
+    );
+    if (reattachRunLease && !keepBrowserOpen && ownsConnectedTarget) {
+      await closeRemoteChromeTarget(host, port ?? 9222, connectedTargetId, logger);
+    }
+    if (reattachRunLease) {
+      const completedLease = reattachRunLease;
+      reattachRunLease = null;
+      const chrome = {
+        port: port ?? 9222,
+        pid: liveRuntime.chromePid,
+        host,
+        kill: async () => undefined,
+        process: undefined,
+      } as unknown as LaunchedChrome & { host?: string };
+      await releaseReattachRunLease(
+        completedLease,
+        logger,
+        keepBrowserOpen
+          ? undefined
+          : async () =>
+              closeManagedChromeIfUnused(chrome, completedLease.userDataDir, true, logger),
+      );
+    }
 
     return {
       answerText: aligned.answerText,
@@ -223,6 +379,9 @@ export async function resumeBrowserSession(
       keepBrowserOpen: afterAnswerResult?.keepBrowserOpen,
     };
   } catch (error) {
+    await closeConnection?.().catch(() => undefined);
+    await releaseReattachRunLease(reattachRunLease, logger);
+    reattachRunLease = null;
     const message = error instanceof Error ? error.message : String(error);
     logger(
       `Existing Chrome reattach failed (${message}); reopening browser to locate the session.`,
@@ -302,126 +461,190 @@ async function resumeBrowserSessionViaNewChrome(
   if (manualLogin) {
     await mkdir(userDataDir, { recursive: true });
   }
-  await seedChromeProfileLanguage(userDataDir, resolved.acceptLanguage, logger);
-  const chrome = await launchChrome(resolved, userDataDir, logger);
-  const chromeHost = (chrome as unknown as { host?: string }).host ?? "127.0.0.1";
-  const client = await connectToChrome(chrome.port, logger, chromeHost);
-  const { Network, Page, Runtime, DOM } = client;
-
-  if (Runtime?.enable) {
-    await Runtime.enable();
-  }
-  if (DOM && typeof DOM.enable === "function") {
-    await DOM.enable();
-  }
-  if (resolved.acceptLanguage) {
-    await applyPageLanguageOverrides(client, resolved.acceptLanguage, logger);
-  }
-  if (!resolved.headless && resolved.hideWindow) {
-    await hideChromeWindow(chrome, logger);
-  }
-
-  let appliedCookies = 0;
-  if (!manualLogin && resolved.cookieSync) {
-    appliedCookies = await syncCookies(Network, resolved.url, resolved.chromeProfile, logger, {
-      allowErrors: resolved.allowCookieErrors,
-      filterNames: resolved.cookieNames ?? undefined,
-      inlineCookies: resolved.inlineCookies ?? undefined,
-      cookiePath: resolved.chromeCookiePath ?? undefined,
-      waitMs: resolved.cookieSyncWaitMs ?? 0,
-    });
-  }
-
-  await navigateToChatGPT(Page, Runtime, CHATGPT_URL, logger);
-  await ensureNotBlocked(Runtime, resolved.headless, logger);
-  await ensureLoggedIn(Runtime, logger, { appliedCookies });
-  if (resolved.url !== CHATGPT_URL) {
-    await navigateToChatGPT(Page, Runtime, resolved.url, logger);
-    await ensureNotBlocked(Runtime, resolved.headless, logger);
-  }
-  await ensurePromptReady(Runtime, resolved.inputTimeoutMs, logger);
-
-  const conversationUrl = buildConversationUrl(runtime, resolved.url);
-  if (conversationUrl) {
-    logger(`Reopening conversation at ${conversationUrl}`);
-    await navigateToChatGPT(Page, Runtime, conversationUrl, logger);
-    await ensureNotBlocked(Runtime, resolved.headless, logger);
-    await ensurePromptReady(Runtime, resolved.inputTimeoutMs, logger);
-  } else {
-    const opened = await openConversationFromSidebarWithRetry(
-      Runtime,
-      {
-        conversationId:
-          runtime.conversationId ?? extractConversationIdFromUrl(runtime.tabUrl ?? ""),
-        preferProjects:
-          resolved.url !== CHATGPT_URL ||
-          Boolean(
-            runtime.tabUrl && (/\/g\//.test(runtime.tabUrl) || runtime.tabUrl.includes("/project")),
-          ),
-        promptPreview: deps.promptPreview,
-      },
-      15_000,
-    );
-    if (!opened) {
-      throw new Error("Unable to locate prior ChatGPT conversation in sidebar.");
+  const launchLock = manualLogin
+    ? await acquireProfileRunLock(userDataDir, {
+        timeoutMs: lifecycleLockTimeout(resolved.profileLockTimeoutMs),
+        logger,
+      })
+    : null;
+  let reattachRunLease: ReattachRunLease | null = null;
+  let reusedChrome: LaunchedChrome | null = null;
+  let chrome: LaunchedChrome | null = null;
+  try {
+    reusedChrome = manualLogin ? await maybeReuseRunningChrome(userDataDir, logger) : null;
+    if (!reusedChrome) {
+      await seedChromeProfileLanguage(userDataDir, resolved.acceptLanguage, logger);
     }
-    await waitForLocationChange(Runtime, 15_000);
-  }
-
-  const waitForResponse = deps.waitForAssistantResponse ?? waitForAssistantResponse;
-  const captureMarkdown = deps.captureAssistantMarkdown ?? captureAssistantMarkdown;
-  const timeoutMs = resolved.timeoutMs ?? 120_000;
-  const minTurnIndex = await readConversationTurnIndex(Runtime, logger);
-  const promptEcho = buildPromptEchoMatcher(deps.promptPreview);
-  const answer = await waitForResponse(Runtime, timeoutMs, logger, minTurnIndex ?? undefined);
-  const recovered = await recoverPromptEcho(
-    Runtime,
-    answer,
-    promptEcho,
-    logger,
-    minTurnIndex,
-    timeoutMs,
-  );
-  const markdown = (await captureMarkdown(Runtime, recovered.meta, logger)) ?? recovered.text;
-  const aligned = alignPromptEchoMarkdown(recovered.text, markdown, promptEcho, logger);
-  const afterAnswerResult = await deps.afterAnswerCb?.({
-    Runtime,
-    Page,
-    Input: client.Input,
-    answer: {
-      text: aligned.answerText,
-      markdown: aligned.answerMarkdown,
-    },
-  });
-
-  if (client && typeof client.close === "function") {
-    try {
-      await client.close();
-    } catch {
-      // ignore
-    }
-  }
-  if (!resolved.keepBrowser && !afterAnswerResult?.keepBrowserOpen) {
-    try {
-      await closeChromeGracefully(chrome, logger);
-    } catch {
-      // ignore close failures
-    }
+    chrome = reusedChrome ?? (await launchChrome(resolved, userDataDir, logger));
     if (manualLogin) {
-      await cleanupStaleProfileState(userDataDir, logger, { lockRemovalMode: "never" }).catch(
-        () => undefined,
+      reattachRunLease = {
+        userDataDir,
+        timeoutMs: lifecycleLockTimeout(resolved.profileLockTimeoutMs),
+        lease: await createManagedChromeRunLease(userDataDir),
+      };
+    }
+  } catch (error) {
+    if (chrome && !reusedChrome) {
+      const closed = await closeChromeGracefully(chrome, logger).then(
+        () => true,
+        () => {
+          releaseChromeProcessHandle(chrome);
+          return false;
+        },
       );
+      if (closed) {
+        await cleanupStaleProfileState(userDataDir, logger, { lockRemovalMode: "never" }).catch(
+          () => undefined,
+        );
+      }
     } else {
+      releaseChromeProcessHandle(chrome);
+    }
+    throw error;
+  } finally {
+    await launchLock?.release();
+  }
+  if (!chrome) throw new Error("Failed to start or reuse managed Chrome.");
+  const chromeHost = (chrome as unknown as { host?: string }).host ?? "127.0.0.1";
+  let client: ChromeClient | null = null;
+  let isolatedTargetId: string | undefined;
+  let completed = false;
+  let keepBrowserOpen = false;
+  try {
+    const isolatedConnection = manualLogin
+      ? await connectWithNewTab(chrome.port, logger, "about:blank", chromeHost, {
+          fallbackToDefault: false,
+          retries: 2,
+        })
+      : { client: await connectToChrome(chrome.port, logger, chromeHost) };
+    client = isolatedConnection.client;
+    isolatedTargetId = isolatedConnection.targetId;
+    const { Network, Page, Runtime, DOM } = client;
+
+    if (Runtime?.enable) {
+      await Runtime.enable();
+    }
+    if (DOM && typeof DOM.enable === "function") {
+      await DOM.enable();
+    }
+    if (resolved.acceptLanguage) {
+      await applyPageLanguageOverrides(client, resolved.acceptLanguage, logger);
+    }
+    if (!resolved.headless && resolved.hideWindow) {
+      await hideChromeWindow(chrome, logger);
+    }
+
+    let appliedCookies = 0;
+    if (!manualLogin && resolved.cookieSync) {
+      appliedCookies = await syncCookies(Network, resolved.url, resolved.chromeProfile, logger, {
+        allowErrors: resolved.allowCookieErrors,
+        filterNames: resolved.cookieNames ?? undefined,
+        inlineCookies: resolved.inlineCookies ?? undefined,
+        cookiePath: resolved.chromeCookiePath ?? undefined,
+        waitMs: resolved.cookieSyncWaitMs ?? 0,
+      });
+    }
+
+    await navigateToChatGPT(Page, Runtime, CHATGPT_URL, logger);
+    await ensureNotBlocked(Runtime, resolved.headless, logger);
+    await ensureLoggedIn(Runtime, logger, { appliedCookies });
+    if (resolved.url !== CHATGPT_URL) {
+      await navigateToChatGPT(Page, Runtime, resolved.url, logger);
+      await ensureNotBlocked(Runtime, resolved.headless, logger);
+    }
+    await ensurePromptReady(Runtime, resolved.inputTimeoutMs, logger);
+
+    const conversationUrl = buildConversationUrl(runtime, resolved.url);
+    if (conversationUrl) {
+      logger(`Reopening conversation at ${conversationUrl}`);
+      await navigateToChatGPT(Page, Runtime, conversationUrl, logger);
+      await ensureNotBlocked(Runtime, resolved.headless, logger);
+      await ensurePromptReady(Runtime, resolved.inputTimeoutMs, logger);
+    } else {
+      const opened = await openConversationFromSidebarWithRetry(
+        Runtime,
+        {
+          conversationId:
+            runtime.conversationId ?? extractConversationIdFromUrl(runtime.tabUrl ?? ""),
+          preferProjects:
+            resolved.url !== CHATGPT_URL ||
+            Boolean(
+              runtime.tabUrl &&
+              (/\/g\//.test(runtime.tabUrl) || runtime.tabUrl.includes("/project")),
+            ),
+          promptPreview: deps.promptPreview,
+        },
+        15_000,
+      );
+      if (!opened) {
+        throw new Error("Unable to locate prior ChatGPT conversation in sidebar.");
+      }
+      await waitForLocationChange(Runtime, 15_000);
+    }
+
+    const waitForResponse = deps.waitForAssistantResponse ?? waitForAssistantResponse;
+    const captureMarkdown = deps.captureAssistantMarkdown ?? captureAssistantMarkdown;
+    const timeoutMs = resolved.timeoutMs ?? 120_000;
+    const minTurnIndex = await readConversationTurnIndex(Runtime, logger);
+    const promptEcho = buildPromptEchoMatcher(deps.promptPreview);
+    const answer = await waitForResponse(Runtime, timeoutMs, logger, minTurnIndex ?? undefined);
+    const recovered = await recoverPromptEcho(
+      Runtime,
+      answer,
+      promptEcho,
+      logger,
+      minTurnIndex,
+      timeoutMs,
+    );
+    const markdown = (await captureMarkdown(Runtime, recovered.meta, logger)) ?? recovered.text;
+    const aligned = alignPromptEchoMarkdown(recovered.text, markdown, promptEcho, logger);
+    const afterAnswerResult = await deps.afterAnswerCb?.({
+      Runtime,
+      Page,
+      Input: client.Input,
+      answer: {
+        text: aligned.answerText,
+        markdown: aligned.answerMarkdown,
+      },
+    });
+
+    keepBrowserOpen = Boolean(resolved.keepBrowser || afterAnswerResult?.keepBrowserOpen);
+    completed = true;
+    return {
+      answerText: aligned.answerText,
+      answerMarkdown: aligned.answerMarkdown,
+      chromeMode: "relaunched",
+      keepBrowserOpen: afterAnswerResult?.keepBrowserOpen,
+    };
+  } finally {
+    await client?.close().catch(() => undefined);
+    if (manualLogin && completed && !keepBrowserOpen && isolatedTargetId) {
+      await closeTab(chrome.port, isolatedTargetId, logger, chromeHost);
+    }
+    if (reattachRunLease) {
+      const completedLease = reattachRunLease;
+      reattachRunLease = null;
+      await releaseReattachRunLease(
+        completedLease,
+        logger,
+        completed && !keepBrowserOpen
+          ? async () =>
+              closeManagedChromeIfUnused(
+                chrome,
+                completedLease.userDataDir,
+                Boolean(reusedChrome),
+                logger,
+              )
+          : undefined,
+      );
+      releaseChromeProcessHandle(chrome);
+    } else if (!manualLogin && completed && !keepBrowserOpen) {
+      await closeChromeGracefully(chrome, logger).catch(() => undefined);
       await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined);
+    } else {
+      releaseChromeProcessHandle(chrome);
     }
   }
-
-  return {
-    answerText: aligned.answerText,
-    answerMarkdown: aligned.answerMarkdown,
-    chromeMode: "relaunched",
-    keepBrowserOpen: afterAnswerResult?.keepBrowserOpen,
-  };
 }
 
 // biome-ignore lint/style/useNamingConvention: test-only export used in vitest suite

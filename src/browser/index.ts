@@ -3,7 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import net from "node:net";
 import CDP from "chrome-remote-interface";
-import { resolveBrowserConfig } from "./config.js";
+import { DEFAULT_BROWSER_CONFIG, resolveBrowserConfig } from "./config.js";
 import type {
   BrowserRunOptions,
   BrowserRunResult,
@@ -22,6 +22,8 @@ import {
   closeRemoteChromeTarget,
   closeChromeGracefully,
   listRemoteChromeTargets,
+  maybeReuseRunningChrome,
+  releaseChromeProcessHandle,
   restoreChromeWindowByPid,
   shouldLaunchChromeMinimized,
 } from "./chromeLifecycle.js";
@@ -57,12 +59,12 @@ import { BrowserAutomationError } from "./errors.js";
 import { defaultAskProBrowserProfileDir } from "./profilePaths.js";
 import { applyPageLanguageOverrides, seedChromeProfileLanguage } from "./language.js";
 import { alignPromptEchoPair, buildPromptEchoMatcher } from "./reattachHelpers.js";
-import type { ProfileRunLock } from "./profileState.js";
+import type { ManagedChromeRunLease, ProfileRunLock } from "./profileState.js";
 import {
   cleanupStaleProfileState,
   acquireProfileRunLock,
-  readChromePid,
-  readDevToolsPort,
+  createManagedChromeRunLease,
+  releaseManagedChromeRunLeaseAndCountPeers,
   shouldCleanupManualLoginProfileState,
   verifyDevToolsReachable,
   writeChromePid,
@@ -222,26 +224,40 @@ function shouldEnablePostSubmitInputGuard(config: {
   return !config.remoteChrome && !config.browserTabRef;
 }
 
-function shouldCloseManagedChromeOnCleanup(config: {
-  reusedChrome?: boolean;
+type ManagedChromeCleanupDecision = "close-browser" | "retain-browser" | "connection-lost";
+
+function decideManagedChromeCleanup(config: {
   keepBrowserOpen?: boolean;
   connectionClosedUnexpectedly?: boolean;
-}): boolean {
-  return !config.reusedChrome && !config.keepBrowserOpen && !config.connectionClosedUnexpectedly;
+  peerRunCount: number | null;
+  remainingTargets: Array<{ id?: string; targetId?: string; type?: string }> | null;
+  completedRunTargetId?: string | null;
+}): ManagedChromeCleanupDecision {
+  if (config.connectionClosedUnexpectedly) return "connection-lost";
+  if (
+    config.keepBrowserOpen ||
+    config.peerRunCount === null ||
+    config.peerRunCount > 0 ||
+    config.remainingTargets === null ||
+    shouldRetainLaunchedChromeAfterRun(config.remainingTargets, config.completedRunTargetId)
+  ) {
+    return "retain-browser";
+  }
+  return "close-browser";
 }
 
-function shouldCleanupManualLoginStateOnCleanup(config: {
-  reusedChrome?: boolean;
-  connectionClosedUnexpectedly?: boolean;
-}): boolean {
-  return !config.reusedChrome || Boolean(config.connectionClosedUnexpectedly);
+function shouldCaptureLaunchTargetsForCleanup(config: { reusedChrome?: boolean }): boolean {
+  return !config.reusedChrome;
 }
 
-function shouldCaptureLaunchTargetsForCleanup(config: {
-  manualLogin?: boolean;
-  reusedChrome?: boolean;
-}): boolean {
-  return !config.manualLogin && !config.reusedChrome;
+function shouldRetainLaunchedChromeAfterRun(
+  targets: Array<{ id?: string; targetId?: string; type?: string }>,
+  completedRunTargetId?: string | null,
+): boolean {
+  return targets.some((target) => {
+    const targetId = target.targetId ?? target.id;
+    return Boolean(targetId && targetId !== completedRunTargetId && target.type === "page");
+  });
 }
 
 function isDisposableLaunchPageUrl(url: string | undefined): boolean {
@@ -522,40 +538,89 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     logger(`Created temporary Chrome profile at ${userDataDir}`);
   }
 
+  const profileLockTimeoutMs = manualLogin ? (config.profileLockTimeoutMs ?? 0) : 0;
+  const lifecycleLockTimeoutMs = manualLogin
+    ? profileLockTimeoutMs > 0
+      ? profileLockTimeoutMs
+      : (DEFAULT_BROWSER_CONFIG.profileLockTimeoutMs ?? 300_000)
+    : 0;
+  let profileLock: ProfileRunLock | null = null;
+  const acquireProfileLockIfNeeded = async (timeoutMs = profileLockTimeoutMs) => {
+    if (timeoutMs <= 0) return;
+    profileLock = await acquireProfileRunLock(userDataDir, {
+      timeoutMs,
+      logger,
+    });
+  };
+  const releaseProfileLockIfHeld = async () => {
+    if (!profileLock) return;
+    const handle = profileLock;
+    profileLock = null;
+    await handle.release().catch(() => undefined);
+  };
+
   const effectiveKeepBrowser = Boolean(config.keepBrowser);
-  const reusedChrome = manualLogin
-    ? await maybeReuseRunningChrome(userDataDir, logger, {
-        waitForPortMs: config.reuseChromeWaitMs,
-      })
-    : null;
-  const chrome =
-    reusedChrome ??
-    (await (async () => {
-      await seedChromeProfileLanguage(userDataDir, config.acceptLanguage, logger);
-      return launchChrome(
-        {
-          ...config,
-          remoteChrome: config.remoteChrome,
+  let managedChromeRunLease: ManagedChromeRunLease | null = null;
+  await acquireProfileLockIfNeeded(lifecycleLockTimeoutMs);
+  let reusedChrome: LaunchedChrome | null = null;
+  let chrome: LaunchedChrome | null = null;
+  try {
+    reusedChrome = manualLogin
+      ? await maybeReuseRunningChrome(userDataDir, logger, {
+          waitForPortMs: config.reuseChromeWaitMs,
+        })
+      : null;
+    chrome =
+      reusedChrome ??
+      (await (async () => {
+        await seedChromeProfileLanguage(userDataDir, config.acceptLanguage, logger);
+        return launchChrome(
+          {
+            ...config,
+            remoteChrome: config.remoteChrome,
+          },
+          userDataDir,
+          logger,
+        );
+      })());
+    // Persist profile state so future manual-login runs can reuse this Chrome.
+    if (manualLogin && chrome.port) {
+      await writeDevToolsActivePort(userDataDir, chrome.port);
+      if (!reusedChrome && chrome.pid) {
+        await writeChromePid(userDataDir, chrome.pid);
+      }
+      managedChromeRunLease = await createManagedChromeRunLease(userDataDir);
+    }
+  } catch (error) {
+    if (chrome && !reusedChrome) {
+      const closed = await closeChromeGracefully(chrome, logger).then(
+        () => true,
+        () => {
+          releaseChromeProcessHandle(chrome);
+          return false;
         },
-        userDataDir,
-        logger,
       );
-    })());
+      if (closed) {
+        await cleanupStaleProfileState(userDataDir, logger, { lockRemovalMode: "never" }).catch(
+          () => undefined,
+        );
+      }
+    } else {
+      releaseChromeProcessHandle(chrome);
+    }
+    throw error;
+  } finally {
+    await releaseProfileLockIfHeld();
+  }
+  if (!chrome) throw new Error("Failed to start or reuse managed Chrome.");
   const chromeLaunchMinimized = !reusedChrome && shouldLaunchChromeMinimized(config);
   const chromeHost = (chrome as unknown as { host?: string }).host ?? "127.0.0.1";
-  // Persist profile state so future manual-login runs can reuse this Chrome.
-  if (manualLogin && chrome.port) {
-    await writeDevToolsActivePort(userDataDir, chrome.port);
-    if (!reusedChrome && chrome.pid) {
-      await writeChromePid(userDataDir, chrome.pid);
-    }
-  }
   let removeTerminationHooks: (() => void) | null = null;
   try {
     removeTerminationHooks = registerTerminationHooks(
       chrome,
       userDataDir,
-      effectiveKeepBrowser || Boolean(reusedChrome),
+      effectiveKeepBrowser || manualLogin,
       logger,
       {
         isInFlight: () => runStatus !== "complete",
@@ -570,6 +635,26 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
   let client: ChromeClient | null = null;
   let isolatedTargetId: string | null = null;
   let launchTargetIds: string[] = [];
+  let closedLaunchTabs = false;
+  const closeLaunchTabs = async () => {
+    if (closedLaunchTabs || launchTargetIds.length === 0) return;
+    closedLaunchTabs = true;
+    const currentTargets = await listRemoteChromeTargets({
+      host: chromeHost,
+      port: chrome.port,
+    }).catch(() => []);
+    const targetIds = selectClosableLaunchTargetIds(
+      launchTargetIds,
+      currentTargets,
+      isolatedTargetId,
+    );
+    launchTargetIds = [];
+    await Promise.all(
+      targetIds.map((targetId) =>
+        closeTab(chrome.port, targetId, logger, chromeHost).catch(() => undefined),
+      ),
+    );
+  };
   let ownsTarget = true;
   const startedAt = Date.now();
   let answerText = "";
@@ -605,9 +690,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         );
       } else {
         const strictTabIsolation = Boolean(manualLogin && reusedChrome);
-        if (
-          shouldCaptureLaunchTargetsForCleanup({ manualLogin, reusedChrome: Boolean(reusedChrome) })
-        ) {
+        if (shouldCaptureLaunchTargetsForCleanup({ reusedChrome: Boolean(reusedChrome) })) {
           const initialTargets = await listRemoteChromeTargets({
             host: chromeHost,
             port: chrome.port,
@@ -983,21 +1066,6 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         }),
       );
     }
-    const profileLockTimeoutMs = manualLogin ? (config.profileLockTimeoutMs ?? 0) : 0;
-    let profileLock: ProfileRunLock | null = null;
-    const acquireProfileLockIfNeeded = async () => {
-      if (profileLockTimeoutMs <= 0) return;
-      profileLock = await acquireProfileRunLock(userDataDir, {
-        timeoutMs: profileLockTimeoutMs,
-        logger,
-      });
-    };
-    const releaseProfileLockIfHeld = async () => {
-      if (!profileLock) return;
-      const handle = profileLock;
-      profileLock = null;
-      await handle.release().catch(() => undefined);
-    };
     const submitOnce = async (prompt: string, submissionAttachments: BrowserAttachment[]) => {
       try {
         const baselineSnapshot = await readAssistantSnapshot(Runtime).catch(() => null);
@@ -1101,27 +1169,6 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
       await raceWithDisconnect(Page.reload({ ignoreCache: true }));
       await raceWithDisconnect(ensurePromptReady(Runtime, config.inputTimeoutMs, logger));
     };
-    let closedLaunchTabs = false;
-    const closeLaunchTabs = async () => {
-      if (closedLaunchTabs || launchTargetIds.length === 0) return;
-      closedLaunchTabs = true;
-      const currentTargets = await listRemoteChromeTargets({
-        host: chromeHost,
-        port: chrome.port,
-      }).catch(() => []);
-      const targetIds = selectClosableLaunchTargetIds(
-        launchTargetIds,
-        currentTargets,
-        isolatedTargetId,
-      );
-      launchTargetIds = [];
-      await Promise.all(
-        targetIds.map((targetId) =>
-          closeTab(chrome.port, targetId, logger, chromeHost).catch(() => undefined),
-        ),
-      );
-    };
-
     let baselineTurns: number | null = null;
     let baselineAssistantText: string | null = null;
     await acquireProfileLockIfNeeded();
@@ -1556,7 +1603,10 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         logger("Manual login completed; restarting ask-pro submission.");
         preserveBrowserOnError = false;
         await client?.close().catch(() => undefined);
-        await closeChromeGracefully(chrome, logger).catch(() => undefined);
+        if (isolatedTargetId && ownsTarget) {
+          await closeTab(chrome.port, isolatedTargetId, logger, chromeHost);
+          ownsTarget = false;
+        }
         return runBrowserMode(options);
       }
       throw new BrowserAutomationError(
@@ -1605,11 +1655,6 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
       preserveBrowserAfterComplete ||
       preserveBrowserOnError ||
       (effectiveKeepBrowser && runStatus !== "complete");
-    const shouldCloseChrome = shouldCloseManagedChromeOnCleanup({
-      reusedChrome: Boolean(reusedChrome),
-      keepBrowserOpen,
-      connectionClosedUnexpectedly,
-    });
     try {
       const guardDisabled = await disablePostSubmitInputGuard();
       if (!guardDisabled && (keepBrowserOpen || connectionClosedUnexpectedly)) {
@@ -1640,69 +1685,85 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     ) {
       await closeTab(chrome.port, isolatedTargetId, logger, chromeHost).catch(() => undefined);
     }
-    removeDialogHandler?.();
-    removeTerminationHooks?.();
-    if (!keepBrowserOpen) {
-      if (shouldCloseChrome) {
+    await closeLaunchTabs();
+    try {
+      let peerRunCount: number | null = 0;
+      if (managedChromeRunLease) {
         try {
-          await closeChromeGracefully(chrome, logger);
-        } catch {
-          // ignore close failures
-        }
-      } else if (!connectionClosedUnexpectedly && reusedChrome) {
-        releaseChromeProcessHandle(chrome);
-        logger(`Reused Chrome left running on port ${chrome.port} with profile ${userDataDir}`);
-      }
-      if (manualLogin) {
-        const shouldCleanup =
-          shouldCleanupManualLoginStateOnCleanup({
-            reusedChrome: Boolean(reusedChrome),
-            connectionClosedUnexpectedly,
-          }) &&
-          (await shouldCleanupManualLoginProfileState(
+          await acquireProfileLockIfNeeded(lifecycleLockTimeoutMs);
+          peerRunCount = await releaseManagedChromeRunLeaseAndCountPeers(
             userDataDir,
-            logger.verbose ? logger : undefined,
-            {
-              connectionClosedUnexpectedly,
-              host: chromeHost,
-            },
-          ));
-        if (shouldCleanup) {
-          // Preserve the persistent manual-login profile, but clear stale reattach hints.
-          await cleanupStaleProfileState(userDataDir, logger, { lockRemovalMode: "never" }).catch(
-            () => undefined,
+            managedChromeRunLease,
+            logger,
           );
+          managedChromeRunLease = null;
+        } catch (error) {
+          peerRunCount = null;
+          const message = error instanceof Error ? error.message : String(error);
+          logger(`Failed to resolve shared Chrome ownership; retaining browser (${message})`);
         }
-      } else {
-        await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined);
       }
-      if (!connectionClosedUnexpectedly) {
-        const totalSeconds = (Date.now() - startedAt) / 1000;
-        logger(`Cleanup ${runStatus} • ${totalSeconds.toFixed(1)}s total`);
+      let remainingTargets: Awaited<ReturnType<typeof listRemoteChromeTargets>> | null = null;
+      if (peerRunCount === 0 && !keepBrowserOpen && !connectionClosedUnexpectedly) {
+        try {
+          remainingTargets = await listRemoteChromeTargets({ host: chromeHost, port: chrome.port });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger(`Failed to inspect remaining Chrome tabs; retaining browser (${message})`);
+        }
       }
-    } else if (!connectionClosedUnexpectedly) {
-      releaseChromeProcessHandle(chrome);
-      logger(`Chrome left running on port ${chrome.port} with profile ${userDataDir}`);
+      const cleanupDecision = decideManagedChromeCleanup({
+        keepBrowserOpen,
+        connectionClosedUnexpectedly,
+        peerRunCount,
+        remainingTargets,
+        completedRunTargetId: ownsTarget ? isolatedTargetId : null,
+      });
+      removeDialogHandler?.();
+      removeTerminationHooks?.();
+      if (!keepBrowserOpen) {
+        if (cleanupDecision === "close-browser") {
+          try {
+            await closeChromeGracefully(chrome, logger);
+          } catch {
+            // ignore close failures
+          }
+        } else if (cleanupDecision === "retain-browser") {
+          releaseChromeProcessHandle(chrome);
+          logger(`Chrome left running on port ${chrome.port} with profile ${userDataDir}`);
+        }
+        if (manualLogin) {
+          const shouldCleanup =
+            cleanupDecision !== "retain-browser" &&
+            (await shouldCleanupManualLoginProfileState(
+              userDataDir,
+              logger.verbose ? logger : undefined,
+              {
+                connectionClosedUnexpectedly,
+                host: chromeHost,
+              },
+            ));
+          if (shouldCleanup) {
+            // Preserve the persistent manual-login profile, but clear stale reattach hints.
+            await cleanupStaleProfileState(userDataDir, logger, {
+              lockRemovalMode: "never",
+            }).catch(() => undefined);
+          }
+        } else if (cleanupDecision !== "retain-browser") {
+          await rm(userDataDir, { recursive: true, force: true }).catch(() => undefined);
+        }
+        if (!connectionClosedUnexpectedly) {
+          const totalSeconds = (Date.now() - startedAt) / 1000;
+          logger(`Cleanup ${runStatus} • ${totalSeconds.toFixed(1)}s total`);
+        }
+      } else if (!connectionClosedUnexpectedly) {
+        releaseChromeProcessHandle(chrome);
+        logger(`Chrome left running on port ${chrome.port} with profile ${userDataDir}`);
+      }
+    } finally {
+      await releaseProfileLockIfHeld();
     }
   }
-}
-
-function releaseChromeProcessHandle(chrome: LaunchedChrome | null | undefined): void {
-  const child = chrome?.process as
-    | (NonNullable<LaunchedChrome["process"]> & {
-        stdin?: { unref?: () => void };
-        stdout?: { unref?: () => void };
-        stderr?: { unref?: () => void };
-        stdio?: Array<{ unref?: () => void } | null | undefined>;
-      })
-    | undefined;
-  child?.stdin?.unref?.();
-  child?.stdout?.unref?.();
-  child?.stderr?.unref?.();
-  for (const stream of child?.stdio ?? []) {
-    stream?.unref?.();
-  }
-  child?.unref?.();
 }
 
 const DEFAULT_DEBUG_PORT = 9222;
@@ -2025,47 +2086,6 @@ async function _assertNavigatedToHttp(
     stage: "execute-browser",
     details: { url: lastUrl || "(empty)" },
   });
-}
-
-async function maybeReuseRunningChrome(
-  userDataDir: string,
-  logger: BrowserLogger,
-  options: { waitForPortMs?: number; probe?: typeof verifyDevToolsReachable } = {},
-): Promise<LaunchedChrome | null> {
-  const waitForPortMs = Math.max(0, options.waitForPortMs ?? 0);
-  let port = await readDevToolsPort(userDataDir);
-  if (!port && waitForPortMs > 0) {
-    const deadline = Date.now() + waitForPortMs;
-    logger(`Waiting up to ${formatElapsed(waitForPortMs)} for shared Chrome to appear...`);
-    while (!port && Date.now() < deadline) {
-      await delay(250);
-      port = await readDevToolsPort(userDataDir);
-    }
-  }
-  if (!port) return null;
-
-  const probe = await (options.probe ?? verifyDevToolsReachable)({ port });
-  if (!probe.ok) {
-    logger(
-      `DevToolsActivePort found for ${userDataDir} but unreachable (${probe.error}); launching new Chrome.`,
-    );
-    // Safe cleanup: remove stale DevToolsActivePort; only remove lock files if this was an ask-pro-owned pid that died.
-    await cleanupStaleProfileState(userDataDir, logger, {
-      lockRemovalMode: "if_ask_pro_pid_dead",
-    });
-    return null;
-  }
-
-  const pid = await readChromePid(userDataDir);
-  logger(
-    `Found running Chrome for ${userDataDir}; reusing (DevTools port ${port}${pid ? `, pid ${pid}` : ""})`,
-  );
-  return {
-    port,
-    pid: pid ?? undefined,
-    kill: async () => {},
-    process: undefined,
-  } as unknown as LaunchedChrome;
 }
 
 async function runRemoteBrowserMode(
@@ -2773,9 +2793,9 @@ export const __test__ = {
   listIgnoredRemoteChromeFlags,
   shouldParkAuthenticatedChromeWindow,
   shouldEnablePostSubmitInputGuard,
-  shouldCloseManagedChromeOnCleanup,
-  shouldCleanupManualLoginStateOnCleanup,
+  decideManagedChromeCleanup,
   shouldCaptureLaunchTargetsForCleanup,
+  shouldRetainLaunchedChromeAfterRun,
   isDisposableLaunchPageUrl,
   selectDisposableLaunchTargetIds,
   selectClosableLaunchTargetIds,

@@ -21,6 +21,9 @@ Read this when working on `ask_pro` from Windows and add new findings here.
   challenge, leave Chrome open and resume with `ask-pro --resume <session-id>`.
 - Chrome DevTools state is recorded in each session's `browser.json`; use the
   saved port for DOM inspection when a live browser needs debugging.
+- Concurrent fresh and resumed runs on one managed profile use PID-backed
+  browser-run leases. A completed run closes only its tab while peers remain;
+  the last live run owns Chrome shutdown, and later runs prune dead leases.
 - The GPT-5.6 ChatGPT picker exposes `GPT-5.6 Sol` at the bottom of the model
   menu and `Pro` as an Intelligence level. ask-pro selects them in that order;
   there is no separate Extended control.

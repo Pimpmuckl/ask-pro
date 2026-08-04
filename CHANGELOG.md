@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Coordinate shared managed Chrome with per-run leases so one run cannot close
+  another run's in-flight browser, and transfer shutdown to the last live run.
+
 ### Changed
 
 - Permanently delete entire ask-pro session directories at least seven days old

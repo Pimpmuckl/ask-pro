@@ -191,81 +191,102 @@ describe("post-submit input guard scope", () => {
 });
 
 describe("managed Chrome cleanup ownership", () => {
-  test("closes Chrome only when this run launched it", () => {
+  test("closes a launched Chrome only when no other page remains", () => {
     expect(
-      __test__.shouldCloseManagedChromeOnCleanup({
-        reusedChrome: false,
+      __test__.decideManagedChromeCleanup({
         keepBrowserOpen: false,
         connectionClosedUnexpectedly: false,
+        peerRunCount: 0,
+        remainingTargets: [],
       }),
-    ).toBe(true);
-  });
-
-  test("leaves reused shared Chrome running after closing the run tab", () => {
+    ).toBe("close-browser");
     expect(
-      __test__.shouldCloseManagedChromeOnCleanup({
-        reusedChrome: true,
+      __test__.decideManagedChromeCleanup({
         keepBrowserOpen: false,
         connectionClosedUnexpectedly: false,
+        peerRunCount: 1,
+        remainingTargets: null,
       }),
-    ).toBe(false);
+    ).toBe("retain-browser");
+    expect(
+      __test__.decideManagedChromeCleanup({
+        keepBrowserOpen: false,
+        connectionClosedUnexpectedly: false,
+        peerRunCount: 0,
+        remainingTargets: [{ targetId: "other-run", type: "page" }],
+      }),
+    ).toBe("retain-browser");
   });
 
-  test("does not close Chrome when retained or already disconnected", () => {
+  test("leaves retained and unknown Chrome state running", () => {
     expect(
-      __test__.shouldCloseManagedChromeOnCleanup({
+      __test__.decideManagedChromeCleanup({
         keepBrowserOpen: true,
         connectionClosedUnexpectedly: false,
+        peerRunCount: 0,
+        remainingTargets: null,
       }),
-    ).toBe(false);
+    ).toBe("retain-browser");
     expect(
-      __test__.shouldCloseManagedChromeOnCleanup({
+      __test__.decideManagedChromeCleanup({
         keepBrowserOpen: false,
+        connectionClosedUnexpectedly: false,
+        peerRunCount: null,
+        remainingTargets: null,
+      }),
+    ).toBe("retain-browser");
+  });
+
+  test("lets the last reused run close the shared browser", () => {
+    expect(
+      __test__.decideManagedChromeCleanup({
+        keepBrowserOpen: false,
+        connectionClosedUnexpectedly: false,
+        peerRunCount: 0,
+        remainingTargets: [],
+      }),
+    ).toBe("close-browser");
+  });
+
+  test("keeps connection loss distinct from a retained live browser", () => {
+    expect(
+      __test__.decideManagedChromeCleanup({
         connectionClosedUnexpectedly: true,
+        peerRunCount: null,
+        remainingTargets: null,
+      }),
+    ).toBe("connection-lost");
+  });
+
+  test("captures startup cleanup targets whenever this process launched Chrome", () => {
+    expect(
+      __test__.shouldCaptureLaunchTargetsForCleanup({
+        reusedChrome: false,
+      }),
+    ).toBe(true);
+    expect(
+      __test__.shouldCaptureLaunchTargetsForCleanup({
+        reusedChrome: true,
       }),
     ).toBe(false);
   });
 
-  test("preserves live reused manual-login profile state", () => {
+  test("retains another page but ignores the completed run and non-page targets", () => {
     expect(
-      __test__.shouldCleanupManualLoginStateOnCleanup({
-        reusedChrome: true,
-        connectionClosedUnexpectedly: false,
-      }),
+      __test__.shouldRetainLaunchedChromeAfterRun(
+        [
+          { targetId: "completed", type: "page" },
+          { targetId: "worker", type: "service_worker" },
+        ],
+        "completed",
+      ),
     ).toBe(false);
     expect(
-      __test__.shouldCleanupManualLoginStateOnCleanup({
-        reusedChrome: true,
-        connectionClosedUnexpectedly: true,
-      }),
+      __test__.shouldRetainLaunchedChromeAfterRun(
+        [{ targetId: "other-blank", type: "page" }],
+        "completed",
+      ),
     ).toBe(true);
-    expect(
-      __test__.shouldCleanupManualLoginStateOnCleanup({
-        reusedChrome: false,
-        connectionClosedUnexpectedly: false,
-      }),
-    ).toBe(true);
-  });
-
-  test("captures launch cleanup targets only for temporary owned profiles", () => {
-    expect(
-      __test__.shouldCaptureLaunchTargetsForCleanup({
-        manualLogin: false,
-        reusedChrome: false,
-      }),
-    ).toBe(true);
-    expect(
-      __test__.shouldCaptureLaunchTargetsForCleanup({
-        manualLogin: true,
-        reusedChrome: false,
-      }),
-    ).toBe(false);
-    expect(
-      __test__.shouldCaptureLaunchTargetsForCleanup({
-        manualLogin: false,
-        reusedChrome: true,
-      }),
-    ).toBe(false);
   });
 });
 

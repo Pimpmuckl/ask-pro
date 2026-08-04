@@ -7,8 +7,14 @@ import { promisify } from "node:util";
 import CDP from "chrome-remote-interface";
 import { launch, Launcher, type LaunchedChrome } from "chrome-launcher";
 import type { BrowserLogger, ResolvedBrowserConfig, ChromeClient } from "./types.js";
-import { cleanupStaleProfileState } from "./profileState.js";
+import {
+  cleanupStaleProfileState,
+  readChromePid,
+  readDevToolsPort,
+  verifyDevToolsReachable,
+} from "./profileState.js";
 import { delay } from "./utils.js";
+import { formatElapsed } from "./format.js";
 
 const execFileAsync = promisify(execFile);
 const CPU_THROTTLING_OVERRIDE_FLAGS = new Set([
@@ -54,6 +60,62 @@ export async function launchChrome(
   return Object.assign(launcher, { host: connectHost ?? "127.0.0.1" }) as LaunchedChrome & {
     host?: string;
   };
+}
+
+export async function maybeReuseRunningChrome(
+  userDataDir: string,
+  logger: BrowserLogger,
+  options: { waitForPortMs?: number; probe?: typeof verifyDevToolsReachable } = {},
+): Promise<LaunchedChrome | null> {
+  const waitForPortMs = Math.max(0, options.waitForPortMs ?? 0);
+  let port = await readDevToolsPort(userDataDir);
+  if (!port && waitForPortMs > 0) {
+    const deadline = Date.now() + waitForPortMs;
+    logger(`Waiting up to ${formatElapsed(waitForPortMs)} for shared Chrome to appear...`);
+    while (!port && Date.now() < deadline) {
+      await delay(250);
+      port = await readDevToolsPort(userDataDir);
+    }
+  }
+  if (!port) return null;
+
+  const probe = await (options.probe ?? verifyDevToolsReachable)({ port });
+  if (!probe.ok) {
+    logger(
+      `DevToolsActivePort found for ${userDataDir} but unreachable (${probe.error}); launching new Chrome.`,
+    );
+    await cleanupStaleProfileState(userDataDir, logger, {
+      lockRemovalMode: "if_ask_pro_pid_dead",
+    });
+    return null;
+  }
+
+  const pid = await readChromePid(userDataDir);
+  logger(
+    `Found running Chrome for ${userDataDir}; reusing (DevTools port ${port}${pid ? `, pid ${pid}` : ""})`,
+  );
+  return {
+    port,
+    pid: pid ?? undefined,
+    kill: async () => {},
+    process: undefined,
+  } as unknown as LaunchedChrome;
+}
+
+export function releaseChromeProcessHandle(chrome: LaunchedChrome | null | undefined): void {
+  const child = chrome?.process as
+    | (NonNullable<LaunchedChrome["process"]> & {
+        stdin?: { unref?: () => void };
+        stdout?: { unref?: () => void };
+        stderr?: { unref?: () => void };
+        stdio?: Array<{ unref?: () => void } | null | undefined>;
+      })
+    | undefined;
+  child?.stdin?.unref?.();
+  child?.stdout?.unref?.();
+  child?.stderr?.unref?.();
+  for (const stream of child?.stdio ?? []) stream?.unref?.();
+  child?.unref?.();
 }
 
 export function registerTerminationHooks(
@@ -165,6 +227,10 @@ export async function closeChromeGracefully(
     }
   }
   await chrome.kill();
+  await waitForChromeExit(chrome.pid, 2500);
+  if (chrome.pid && isPidAlive(chrome.pid)) {
+    throw new Error(`Chrome process ${chrome.pid} remained alive after termination.`);
+  }
   chrome.process?.unref?.();
 }
 
