@@ -1,28 +1,49 @@
 import type { ChromeClient, BrowserLogger } from "./types.js";
-import { CONVERSATION_TURN_SELECTOR } from "./constants.js";
 
-export function buildConversationDebugExpression(): string {
+const MAX_CONTROLS = 32;
+const MAX_JSON_BYTES = 8 * 1024;
+
+export function buildDomControlInventoryExpression(): string {
   return `(() => {
-    const CONVERSATION_SELECTOR = ${JSON.stringify(CONVERSATION_TURN_SELECTOR)};
-    const turns = Array.from(document.querySelectorAll(CONVERSATION_SELECTOR));
-    return turns.map((node) => ({
-      role: node.getAttribute('data-message-author-role'),
-      text: node.innerText?.slice(0, 200),
-      testid: node.getAttribute('data-testid'),
-    }));
+    const selector = [
+      'button', 'input', 'select', 'textarea',
+      '[role="button"]', '[role="combobox"]', '[role="dialog"]', '[role="listbox"]',
+      '[role="menu"]', '[role="menuitem"]', '[role="option"]', '[role="radio"]',
+      '[role="switch"]', '[role="tab"]', '[aria-expanded]', '[aria-haspopup]'
+    ].join(',');
+    const allowed = (value, values) => values.includes(value) ? value : null;
+    const state = (node, name) => allowed(node.getAttribute(name), ['true', 'false', 'mixed']);
+    const nodes = Array.from(document.querySelectorAll(selector));
+    const controls = nodes.map((node, index) => {
+      const style = getComputedStyle(node);
+      const visible = node.getClientRects().length > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      const focused = document.activeElement === node;
+      const inOverlay = Boolean(node.closest('[role="dialog"], dialog, [aria-modal="true"]'));
+      let depth = 0;
+      for (let parent = node.parentElement; parent && depth < 12; parent = parent.parentElement) depth += 1;
+      const control = {
+        index,
+        tag: allowed(node.tagName.toLowerCase(), ['button', 'input', 'select', 'textarea']) ?? 'other',
+        role: allowed(node.getAttribute('role'), ['button', 'combobox', 'dialog', 'listbox', 'menu', 'menuitem', 'option', 'radio', 'switch', 'tab']),
+        type: allowed(node.getAttribute('type'), ['button', 'checkbox', 'file', 'radio', 'reset', 'submit', 'text']),
+        visible,
+        disabled: node.disabled === true || node.getAttribute('aria-disabled') === 'true',
+        focused,
+        inOverlay,
+        expanded: state(node, 'aria-expanded'),
+        pressed: state(node, 'aria-pressed'),
+        checked: state(node, 'aria-checked'),
+        selected: state(node, 'aria-selected'),
+        popup: allowed(node.getAttribute('aria-haspopup'), ['true', 'false', 'menu', 'listbox', 'tree', 'grid', 'dialog']),
+        modal: state(node, 'aria-modal'),
+        depth,
+        childControls: Math.min(node.querySelectorAll(selector).length, ${MAX_CONTROLS}),
+      };
+      return { control, score: (focused ? 4 : 0) + (inOverlay ? 2 : 0) + (visible ? 1 : 0) };
+    }).sort((a, b) => b.score - a.score || a.control.index - b.control.index)
+      .slice(0, ${MAX_CONTROLS}).map(({ control }) => control);
+    return { matchedControls: nodes.length, truncated: nodes.length > ${MAX_CONTROLS}, controls };
   })()`;
-}
-
-export async function logConversationSnapshot(
-  Runtime: ChromeClient["Runtime"],
-  logger: BrowserLogger,
-) {
-  const expression = buildConversationDebugExpression();
-  const { result } = await Runtime.evaluate({ expression, returnByValue: true });
-  if (Array.isArray(result.value)) {
-    const recent = (result.value as Array<Record<string, unknown>>).slice(-3);
-    logger(`Conversation snapshot: ${JSON.stringify(recent)}`);
-  }
 }
 
 export async function logDomFailure(
@@ -30,17 +51,34 @@ export async function logDomFailure(
   logger: BrowserLogger,
   context: string,
 ) {
-  if (!logger?.verbose) {
-    return;
-  }
+  if (!logger?.verbose) return;
   try {
-    const entry = `Browser automation failure (${context}); capturing DOM snapshot for debugging...`;
-    logger(entry);
-    if (logger.sessionLog && logger.sessionLog !== logger) {
-      logger.sessionLog(entry);
+    const { result } = await Runtime.evaluate({
+      expression: buildDomControlInventoryExpression(),
+      returnByValue: true,
+    });
+    const value = result.value as {
+      matchedControls?: unknown;
+      truncated?: unknown;
+      controls?: unknown;
+    };
+    const inventory = {
+      context: context.slice(0, 64),
+      matchedControls: Number.isSafeInteger(value?.matchedControls) ? value.matchedControls : 0,
+      truncated: value?.truncated === true,
+      controls: Array.isArray(value?.controls) ? value.controls.slice(0, MAX_CONTROLS) : [],
+    };
+    let json = JSON.stringify(inventory);
+    while (
+      new TextEncoder().encode(json).byteLength > MAX_JSON_BYTES &&
+      inventory.controls.length
+    ) {
+      inventory.controls.pop();
+      inventory.truncated = true;
+      json = JSON.stringify(inventory);
     }
-    await logConversationSnapshot(Runtime, logger);
+    logger(json);
   } catch {
-    // ignore snapshot failures
+    // Diagnostics must not replace the original browser failure.
   }
 }

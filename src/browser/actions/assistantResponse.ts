@@ -8,11 +8,7 @@ import {
   STOP_BUTTON_SELECTOR,
 } from "../constants.js";
 import { delay } from "../utils.js";
-import {
-  logDomFailure,
-  logConversationSnapshot,
-  buildConversationDebugExpression,
-} from "../domDebug.js";
+import { logDomFailure } from "../domDebug.js";
 import { buildClickDispatcher } from "./domEvents.js";
 
 const ASSISTANT_POLL_TIMEOUT_ERROR = "assistant-response-watchdog-timeout";
@@ -280,10 +276,6 @@ export function buildAssistantSnapshotExpressionForTest(
   return buildAssistantSnapshotExpression(minTurnIndex, expectedConversationId);
 }
 
-export function buildConversationDebugExpressionForTest(): string {
-  return buildConversationDebugExpression();
-}
-
 export function buildMarkdownFallbackExtractorForTest(minTurnLiteral = "0"): string {
   return buildMarkdownFallbackExtractor(minTurnLiteral);
 }
@@ -321,7 +313,7 @@ async function recoverAssistantResponse(
     logger("Recovered assistant response via polling fallback");
     return recovered;
   }
-  await logConversationSnapshot(Runtime, logger).catch(() => undefined);
+  await logDomFailure(Runtime, logger, "assistant-response-recovery");
   return null;
 }
 
@@ -1395,4 +1387,5 @@ function cleanAssistantText(text: string): string {
 // biome-ignore lint/style/useNamingConvention: test-only export used in vitest suite
 export const __test__ = {
   buildResponseObserverExpression,
+  recoverAssistantResponse,
 };

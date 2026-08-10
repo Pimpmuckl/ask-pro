@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Replace conversation snapshots in verbose browser failure logs with bounded,
+  content-free control inventories for DOM repair.
 - Prevent concurrent browser controllers from mutating the same ask-pro session.
 - Preserve mutable recovery files when a replacement write fails.
 - Require state-bearing Temporary Chat evidence, delegate manual-login restart
