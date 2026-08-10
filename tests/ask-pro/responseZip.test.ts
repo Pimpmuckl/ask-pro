@@ -1,9 +1,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createStoredZip } from "../../src/ask-pro/zip.js";
 import {
+  type AskProResponseZipManifest,
   harvestAssistantZipDownloadButton,
   processResponseZip,
   writeResponseZipManifest,
@@ -12,6 +13,7 @@ import {
 const tempDirs: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
@@ -55,6 +57,40 @@ describe("ask-pro response zip", () => {
 
     expect(manifest.responseZip.status).toBe("unavailable");
     expect(manifest.responseZip.requiredFilesPresent).toBe(false);
+  });
+
+  test("replaces the manifest and preserves it when replacement fails", async () => {
+    const sessionDir = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-response-"));
+    tempDirs.push(sessionDir);
+    const manifestPath = path.join(sessionDir, "PRO_OUTPUT_MANIFEST.json");
+    const original = {
+      schemaVersion: 1,
+      responseZip: {
+        status: "unavailable",
+        actualFileName: null,
+        downloadPath: null,
+        extractPath: null,
+        requiredFilesPresent: false,
+        notes: [],
+      },
+    } satisfies AskProResponseZipManifest;
+    await writeResponseZipManifest(sessionDir, original);
+    await writeResponseZipManifest(sessionDir, {
+      ...original,
+      responseZip: { ...original.responseZip, notes: ["replacement"] },
+    });
+    const originalText = await fs.readFile(manifestPath, "utf8");
+    expect(originalText).toContain('"replacement"');
+    vi.spyOn(fs, "rename").mockRejectedValueOnce(new Error("replacement failed"));
+
+    await expect(
+      writeResponseZipManifest(sessionDir, {
+        ...original,
+        responseZip: { ...original.responseZip, notes: ["new"] },
+      }),
+    ).rejects.toThrow("replacement failed");
+    expect(await fs.readFile(manifestPath, "utf8")).toBe(originalText);
+    expect((await fs.readdir(sessionDir)).some((name) => name.endsWith(".tmp"))).toBe(false);
   });
 
   test("clicks ChatGPT file button downloads into the session directory", async () => {

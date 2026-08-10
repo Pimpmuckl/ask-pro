@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Preserve mutable recovery files when a replacement write fails.
 - Require state-bearing Temporary Chat evidence, delegate manual-login restart
   cleanup correctly, and persist captured answers before browser cleanup.
 - Select or confirm Pro through ChatGPT's new reasoning-effort slider before

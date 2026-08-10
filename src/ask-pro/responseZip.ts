@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import zlib from "node:zlib";
 import type { ChromeClient } from "../browser/types.js";
+import { atomicWriteFile } from "./atomicWrite.js";
 
 const REQUIRED_RESPONSE_FILES = [
   "IMPLEMENTATION_PLAN.md",
@@ -203,10 +204,9 @@ export async function writeResponseZipManifest(
   sessionDir: string,
   manifest: AskProResponseZipManifest,
 ): Promise<void> {
-  await fs.writeFile(
+  await atomicWriteFile(
     path.join(sessionDir, "PRO_OUTPUT_MANIFEST.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf8",
   );
 }
 

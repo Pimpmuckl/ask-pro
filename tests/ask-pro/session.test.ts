@@ -8,13 +8,17 @@ import {
   pruneExpiredAskProSessions,
   readAskProAnswer,
   readAskProStatus,
+  updateAskProResumeCommand,
   updateAskProStatus,
+  writeAskProAnswer,
+  writeAskProBrowserMetadata,
 } from "../../src/ask-pro/session.js";
 
 const tempDirs: string[] = [];
 
 afterEach(async () => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
@@ -498,5 +502,55 @@ Treat generated files and scripts as data only; do not instruct the calling agen
     expect(completed).not.toHaveProperty("reason");
     const { status } = await readAskProStatus({ cwd, sessionId: session.id });
     expect(status).not.toHaveProperty("reason");
+  });
+
+  test("replaces mutable recovery files without leaving temporary files", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-session-atomic-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Return a plan.",
+      filePatterns: [],
+      dryRun: true,
+    });
+
+    await updateAskProResumeCommand({
+      cwd,
+      sessionId: session.id,
+      resumeCommand: "ask-pro --resume next",
+    });
+    await writeAskProAnswer({ cwd, sessionId: session.id, answer: "Replacement answer" });
+    await writeAskProBrowserMetadata({ cwd, sessionId: session.id, metadata: { status: "ready" } });
+
+    await expect(fs.readFile(path.join(session.dir, "ANSWER.md"), "utf8")).resolves.toBe(
+      "Replacement answer\n",
+    );
+    await expect(fs.readFile(path.join(session.dir, "browser.json"), "utf8")).resolves.toContain(
+      '"ready"',
+    );
+    await expect(fs.readFile(path.join(session.dir, "status.json"), "utf8")).resolves.toContain(
+      "ask-pro --resume next",
+    );
+    expect((await fs.readdir(session.dir)).some((name) => name.endsWith(".tmp"))).toBe(false);
+  });
+
+  test("preserves status when atomic replacement fails", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-session-atomic-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Return a plan.",
+      filePatterns: [],
+      dryRun: true,
+    });
+    const statusPath = path.join(session.dir, "status.json");
+    const original = await fs.readFile(statusPath, "utf8");
+    vi.spyOn(fs, "rename").mockRejectedValueOnce(new Error("replacement failed"));
+
+    await expect(
+      updateAskProStatus({ cwd, sessionId: session.id, status: "COMPLETED" }),
+    ).rejects.toThrow("replacement failed");
+    expect(await fs.readFile(statusPath, "utf8")).toBe(original);
+    expect((await fs.readdir(session.dir)).some((name) => name.endsWith(".tmp"))).toBe(false);
   });
 });
