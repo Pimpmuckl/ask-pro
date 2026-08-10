@@ -1008,7 +1008,7 @@ describe("ask-pro cli", () => {
         env: {
           ...process.env,
           ASK_PRO_SOURCE_CHECKOUT_LAUNCHER:
-            'npm exec --yes pnpm@10.33.2 -- --dir "C:/Code/ask-pro" start --',
+            'npm exec --yes pnpm@11.19.0 -- --dir "C:/Code/ask-pro" start --',
           INIT_CWD: cwd,
         },
       },
@@ -1021,10 +1021,10 @@ describe("ask-pro cli", () => {
     );
     expect(JSON.parse(statusRaw)).toMatchObject({
       resumeCommand: expect.stringMatching(
-        /^npm exec --yes pnpm@10\.33\.2 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --resume /,
+        /^npm exec --yes pnpm@11\.19\.0 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --resume /,
       ),
       harvestCommand: expect.stringMatching(
-        /^npm exec --yes pnpm@10\.33\.2 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --harvest /,
+        /^npm exec --yes pnpm@11\.19\.0 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --harvest /,
       ),
     });
   }, 30000);
@@ -1045,7 +1045,7 @@ describe("ask-pro cli", () => {
         env: {
           ...process.env,
           ASK_PRO_SOURCE_CHECKOUT_LAUNCHER:
-            'npm exec --yes pnpm@10.33.2 -- --dir "C:/Code/ask-pro" start --',
+            'npm exec --yes pnpm@11.19.0 -- --dir "C:/Code/ask-pro" start --',
           INIT_CWD: projectCwd,
         },
       },
@@ -1078,6 +1078,10 @@ describe("ask-pro cli", () => {
     await fs.copyFile(
       path.join(process.cwd(), "pnpm-lock.yaml"),
       path.join(cacheRoot, "pnpm-lock.yaml"),
+    );
+    await fs.copyFile(
+      path.join(process.cwd(), "pnpm-workspace.yaml"),
+      path.join(cacheRoot, "pnpm-workspace.yaml"),
     );
     const writeCli = (revision: number) =>
       fs.writeFile(

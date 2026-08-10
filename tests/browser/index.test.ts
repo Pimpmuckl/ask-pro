@@ -191,6 +191,13 @@ describe("post-submit input guard scope", () => {
 });
 
 describe("managed Chrome cleanup ownership", () => {
+  test("delegates successful manual-login restarts to completed cleanup", () => {
+    const runtimeSource = readFileSync("src/browser/index.ts", "utf8");
+    expect(runtimeSource).toMatch(
+      /const restartedResult = await runBrowserMode\(options\);\s+runStatus = "complete";\s+return restartedResult;/,
+    );
+  });
+
   test("closes a launched Chrome only when no other page remains", () => {
     expect(
       __test__.decideManagedChromeCleanup({

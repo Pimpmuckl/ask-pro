@@ -374,6 +374,47 @@ describe("ask-pro browser runner", () => {
     expect(result).toEqual({ keepBrowserOpen: true });
   });
 
+  test("persists a fresh answer before browser cleanup fails", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-cleanup-fail-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Give a durable answer.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    runBrowserModeMock.mockImplementationOnce(async (...args: unknown[]) => {
+      const afterAnswerCb = (
+        args[0] as {
+          afterAnswerCb: (context: {
+            Runtime: unknown;
+            Page: unknown;
+            Input: unknown;
+            answer: { text: string; markdown: string };
+          }) => Promise<unknown>;
+        }
+      ).afterAnswerCb;
+      await afterAnswerCb({
+        Runtime: undefined,
+        Page: undefined,
+        Input: undefined,
+        answer: { text: "Durable answer", markdown: "# Durable answer\n" },
+      });
+      throw new Error("cleanup failed");
+    });
+
+    await expect(runAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      "cleanup failed",
+    );
+
+    expect((await readAskProAnswer({ cwd, sessionId: session.id })).answer).toBe(
+      "# Durable answer\n",
+    );
+    expect((await readAskProStatus({ cwd, sessionId: session.id })).status.status).toBe(
+      "COMPLETED",
+    );
+  });
+
   test("does not harvest response zip for inline-default sessions", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-inline-no-zip-"));
     tempDirs.push(cwd);
@@ -1158,6 +1199,58 @@ describe("ask-pro browser runner", () => {
       await fs.readFile(path.join(session.dir, "PRO_OUTPUT_MANIFEST.json"), "utf8"),
     );
     expect(manifest.responseZip.status).toBe("unavailable");
+  });
+
+  test("persists a resumed answer before browser cleanup fails", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-cleanup-fail-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Resume a durable answer.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    await writeAskProBrowserMetadata({
+      cwd,
+      sessionId: session.id,
+      metadata: {
+        schemaVersion: 1,
+        status: "running",
+        profileDir: testSharedProfileDir(),
+        runtime: { chromePort: 9222, chromeHost: "127.0.0.1" },
+      },
+    });
+    await updateAskProStatus({ cwd, sessionId: session.id, status: "WAIT_TIMED_OUT" });
+    resumeBrowserSessionMock.mockImplementationOnce(async (...args: unknown[]) => {
+      const afterAnswerCb = (
+        args[3] as {
+          afterAnswerCb: (context: {
+            Runtime: unknown;
+            Page: unknown;
+            Input: unknown;
+            answer: { text: string; markdown: string };
+          }) => Promise<unknown>;
+        }
+      ).afterAnswerCb;
+      await afterAnswerCb({
+        Runtime: undefined,
+        Page: undefined,
+        Input: undefined,
+        answer: { text: "Resumed answer", markdown: "# Resumed answer\n" },
+      });
+      throw new Error("cleanup failed");
+    });
+
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      "cleanup failed",
+    );
+
+    expect((await readAskProAnswer({ cwd, sessionId: session.id })).answer).toBe(
+      "# Resumed answer\n",
+    );
+    expect((await readAskProStatus({ cwd, sessionId: session.id })).status.status).toBe(
+      "COMPLETED",
+    );
   });
 
   test("reattach keeps markdown answer when artifact post-processing fails", async () => {

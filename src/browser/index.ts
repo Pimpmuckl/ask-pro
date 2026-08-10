@@ -1607,7 +1607,9 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
           await closeTab(chrome.port, isolatedTargetId, logger, chromeHost);
           ownsTarget = false;
         }
-        return runBrowserMode(options);
+        const restartedResult = await runBrowserMode(options);
+        runStatus = "complete";
+        return restartedResult;
       }
       throw new BrowserAutomationError(
         isLoginRequired

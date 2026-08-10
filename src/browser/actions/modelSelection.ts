@@ -217,10 +217,6 @@ function buildModelSelectionExpression(
         const flag = (url.searchParams.get('temporary-chat') ?? '').toLowerCase();
         if (flag === 'true' || flag === '1' || flag === 'yes') return true;
       } catch {}
-      const title = (document.title || '').toLowerCase();
-      if (title.includes('temporary chat')) return true;
-      const body = (document.body?.innerText || '').toLowerCase();
-      if (body.includes('temporary chat')) return true;
       const temporaryControls = Array.from(document.querySelectorAll('button, [role="button"], input[type="checkbox"]'));
       return temporaryControls.some((node) => {
         const label = [

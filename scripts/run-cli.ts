@@ -16,7 +16,7 @@ const cliEntry = path.join(here, "../bin/ask-pro-cli.js");
 const child = spawn(process.execPath, ["--", cliEntry, ...args], {
   env: {
     ...process.env,
-    ASK_PRO_SOURCE_CHECKOUT_LAUNCHER: `npm exec --yes pnpm@10.33.2 -- --dir ${quoteCommandArg(repoRoot)} start --`,
+    ASK_PRO_SOURCE_CHECKOUT_LAUNCHER: `npm exec --yes pnpm@11.19.0 -- --dir ${quoteCommandArg(repoRoot)} start --`,
   },
   stdio: "inherit",
 });
