@@ -2,27 +2,25 @@
 
 Use this only as guidance. The agent should write the final prompt itself.
 
-A good `$ask-pro` prompt asks ChatGPT Pro to:
+A good `$ask-pro` prompt gives ChatGPT Pro, once:
 
-- return final markdown only
-- avoid preambles or promises to inspect later
-- inspect the attached manifest/context
-- answer the exact architectural/backend question
-- recommend one concrete approach
-- explain tradeoffs
-- name files to edit
-- provide an implementation sequence
-- identify failure modes
-- provide a test plan
-- identify what not to do
-- return inline markdown unless an implementation bundle is explicitly needed
+- the exact goal or question
+- relevant context and attached evidence
+- hard constraints and success criteria
+- required evidence and output format
+- known uncertainty or missing context
+
+Ask only for outputs that the decision needs. For example, request
+severity-ranked findings for a risk review, or a recommendation and tradeoffs
+for an architecture consult. The CLI wrapper already tells Pro to read
+`CONTEXT.zip` and `MANIFEST.md`, so do not repeat that instruction.
 
 ## Suggested snippet
 
 ```text
 You are reviewing a hard backend/architecture decision for a coding agent.
 
-Return final markdown only. Do not answer with a preamble. Do not produce an implementation package. Rank findings by severity. Treat attached bundle as authoritative. Call out uncertainty.
+Return final Markdown only, with no preamble or implementation package.
 
 Task:
 <what we are trying to build/fix>
@@ -30,11 +28,11 @@ Task:
 Question:
 <the exact decision needed>
 
-Repository context:
-I attached CONTEXT.zip. Read MANIFEST.md first. It lists included files and why they matter.
+Relevant context and evidence:
+<facts and attached files that matter to the decision>
 
-Stack/constraints:
-<language/framework/db/infra/team constraints>
+Constraints and success criteria:
+<hard constraints and what a successful answer must establish>
 
 What I inspected:
 <files and findings>
@@ -44,16 +42,16 @@ Options considered:
 
 Please return:
 1. recommendation
-2. why this approach wins
-3. alternatives and tradeoffs
-4. implementation sequence
-5. files to edit
-6. failure modes and migration risks
-7. test plan
-8. things the coding agent should not do
-9. final concise instruction to the coding agent
-
-For implementation-package prompts only: if file generation is available, also create a downloadable zip named ask-pro-response.zip containing IMPLEMENTATION_PLAN.md, TASKS.json, TEST_PLAN.md, RISK_REGISTER.md, FILES_TO_EDIT.md, and REPO_CONTEXT_USED.md. If you cannot create a zip, return the same content in markdown sections.
+2. supporting evidence and tradeoffs
+3. concrete next steps
+4. uncertainty or missing context
 ```
+
+For risk reviews, also request severity-ranked findings, failure modes, and a
+test plan. For implementation planning, request the sequence and files to edit.
+
+Use `--artifacts` only when the standard implementation package is needed. The
+wrapper supplies the zip name, standard files, and markdown fallback; add only
+task-specific deliverables not covered by that package.
 
 Never send a vague prompt like “what do you think?” without context.

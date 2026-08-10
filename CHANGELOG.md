@@ -11,6 +11,8 @@
 
 ### Changed
 
+- Trim the mandatory Pro prompt wrapper, make the uploaded context evidence-only,
+  and keep style, severity ranking, and output detail task-specific for GPT-5.6.
 - Permanently delete entire ask-pro session directories at least seven days old
   on the next invocation, regardless of status or stored contents.
 - Fall back to a verified copy when Windows sharing handles block legacy

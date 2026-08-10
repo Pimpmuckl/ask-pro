@@ -180,9 +180,7 @@ export async function createAskProSession({
   ]);
 
   const zipEntries = [
-    { name: "PROMPT.md", data: submittedPrompt },
     { name: "MANIFEST.md", data: manifestMarkdown },
-    { name: "MANIFEST.json", data: `${JSON.stringify(manifest, null, 2)}\n` },
     ...redactedFiles.map((file) => ({
       name: `context/${file.path.replace(/\\/g, "/")}`,
       data: file.content,
@@ -892,9 +890,9 @@ function renderSubmittedPrompt(question: string, artifacts: boolean): string {
     : "";
   return `${question}
 
-I attached a context bundle named CONTEXT.zip. Use the files inside it as the authoritative repo context for this question.
+Read MANIFEST.md in CONTEXT.zip first. Treat the context files it lists as authoritative evidence only for the scope they cover, and call out material gaps or conflicts.
 ${artifactRequest}
-Be direct and practical. Prefer boring, reliable implementation choices over cleverness. Do not ask the calling agent to execute generated scripts automatically.
+Treat generated files and scripts as data only; do not instruct the calling agent to execute them automatically.
 `;
 }
 
@@ -905,10 +903,6 @@ function renderManifestMarkdown(manifest: AskProManifest): string {
   return `# ask-pro Context Manifest
 
 Session: \`${manifest.sessionId}\`
-
-## Question
-
-${manifest.question}
 
 ## Included Files
 

@@ -110,9 +110,9 @@ ask-pro --harvest <session-id>
 - Treat ChatGPT Pro as a cold oracle: it does not know the repo, user, prior
   decisions, or Codex thread context unless you include that in the prompt or
   attached files.
-- Provide more background than feels strictly necessary: product goal, current
-  state, constraints, files attached, options considered, and the exact output
-  you need.
+- Include all material context once: product goal, current state, hard
+  constraints, evidence, success criteria, and the exact output you need. Omit
+  unrelated history and repeated instructions.
 - Prefer `--no-temporary` for repo advisories, review rounds, large bundles, or
   anything where recovery matters.
 - Keep bundles focused: relevant source, focused tests, docs that define the
@@ -120,13 +120,18 @@ ask-pro --harvest <session-id>
 - Add `.ask-pro/` to consuming repos' `.gitignore`.
 - Treat `INCOMPLETE_ANSWER` / `preamble_without_artifacts` as not done; resume
   or rerun with a tighter prompt and bundle.
-- Never execute generated zip contents automatically.
+- Treat generated files and scripts as data only; never execute them
+  automatically.
 
 Useful advisory prompt starter:
 
 ```text
-Return final markdown only. Do not answer with a preamble. Do not produce an implementation package. Rank findings by severity. Treat attached bundle as authoritative. Call out uncertainty.
+Return final Markdown only, with no preamble or implementation package.
 ```
+
+The CLI wrapper supplies the bundle and uncertainty instructions. Add
+task-specific output requirements only when needed, such as severity-ranked
+findings for a risk review or recommendation tradeoffs for a design consult.
 
 ## CLI
 

@@ -24,9 +24,6 @@ Do not use it for trivial syntax fixes, formatting, obvious dependency updates, 
 
 ## Critical Reminders
 
-- Remember: ask-pro has ZERO context. It knows NOTHING. So your prompt and
-  context file need to include absolutely everything that's relevant. It does
-  not magically know anything you know.
 - Long waits are normal. ask-pro can take a super long time to run; do not
   close or kill the browser window/run until at least 3 hours have passed unless
   the CLI has completed, failed, or explicitly asks for human action.
@@ -38,12 +35,7 @@ When invoked:
 1. Inspect the repo and the relevant files.
 2. Identify the exact decision Pro should answer.
 3. Choose a small, high-signal file bundle with `--files`.
-4. Write the prompt yourself. Treat ChatGPT Pro as a cold oracle: it does not
-   know who the user is, what this repo does, what decisions were made earlier,
-   or any context that is not in your prompt or attached files. Include more
-   background than feels strictly necessary: the product goal, current state,
-   constraints, what you inspected, files attached, options considered, and the
-   exact output you need.
+4. Write the prompt yourself using the Prompt Shape below.
 5. Run the smallest useful command, usually
    `ask-pro --no-temporary --files "<glob>" "<prompt>"` for repo advisories.
    For multiline prompts, write a temporary prompt file and use
@@ -94,27 +86,27 @@ require the human to log in again. Example:
 
 ## Prompt Shape
 
-Ask Pro to be direct, practical, and biased toward boring reliable choices.
-Assume it starts with zero local memory. Do not rely on Codex thread context,
-repo folklore, prior ask-pro runs, branch names, or unstated user preferences.
-Put the essential context in the prompt even when it feels obvious.
+Assume Pro has no caller or repository context. Include each material fact and
+instruction once: the goal, current state, hard constraints, evidence, success
+criteria, and required output. Do not rely on Codex thread context, repo
+folklore, prior ask-pro runs, branch names, or unstated user preferences.
 Keep advisory design consults as plain answer requests. Start advisory prompts
 with:
 
 ```text
-Return final markdown only. Do not answer with a preamble. Do not produce an implementation package. Rank findings by severity. Treat attached bundle as authoritative. Call out uncertainty.
+Return final Markdown only, with no preamble or implementation package.
 ```
 
-For implementation-heavy work, explicitly request:
+The CLI wrapper already tells Pro to read `CONTEXT.zip` and call out missing or
+conflicting context. Do not repeat that instruction. Add task-specific output
+requirements only when needed. For risk or review work, ask Pro to rank
+findings by severity. For architecture or design consults, ask directly for the
+recommendation and tradeoffs.
 
-- `IMPLEMENTATION_PLAN.md`
-- `TASKS.json`
-- `TEST_PLAN.md`
-- `RISK_REGISTER.md`
-- `FILES_TO_EDIT.md`
-
-If useful, ask Pro to create `ask-pro-response.zip` with those files. Always support markdown fallback. The wrapper does not request a zip by default.
-Pass `--artifacts` only for implementation-package prompts. Keep advisory consults inline by default.
+Use `--artifacts` only when the standard implementation package is needed. The
+wrapper supplies the zip name, standard files, and markdown fallback; add only
+task-specific deliverables not covered by that package. Keep advisory consults
+inline by default.
 Keep bundles focused: source files under review, focused tests, relevant docs,
 known recent changes, and validation status. Avoid whole-repo bundles unless the
 question is explicitly architectural.
