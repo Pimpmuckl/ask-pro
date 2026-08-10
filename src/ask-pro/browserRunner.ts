@@ -25,6 +25,7 @@ import {
   writeAskProBrowserMetadata,
 } from "./session.js";
 import { harvestLatestAssistantZip, writeResponseZipManifest } from "./responseZip.js";
+import { withSessionControllerLease } from "./sessionControllerLease.js";
 
 const DEFAULT_TIMEOUT_MS = 180 * 60 * 1000;
 const MANUAL_LOGIN_WAIT_MS = 10 * 60 * 1000;
@@ -44,7 +45,14 @@ export interface RunAskProBrowserSessionOptions {
   verbose?: boolean;
 }
 
-export async function runAskProBrowserSession({
+export async function runAskProBrowserSession(
+  options: RunAskProBrowserSessionOptions,
+): Promise<BrowserRunResult> {
+  const { dir } = getAskProSessionPaths(options.cwd, options.sessionId);
+  return withSessionControllerLease(dir, () => runAskProBrowserSessionWithLease(options));
+}
+
+async function runAskProBrowserSessionWithLease({
   cwd,
   sessionId,
   temporary,
@@ -239,7 +247,7 @@ export async function runAskProBrowserSession({
           chromeMode: "launched",
         },
       });
-      return runAskProBrowserSession({
+      return runAskProBrowserSessionWithLease({
         cwd,
         sessionId,
         temporary: false,
@@ -299,7 +307,14 @@ export async function runAskProBrowserSession({
   }
 }
 
-export async function resumeAskProBrowserSession({
+export async function resumeAskProBrowserSession(
+  options: RunAskProBrowserSessionOptions,
+): Promise<void> {
+  const { dir } = getAskProSessionPaths(options.cwd, options.sessionId);
+  return withSessionControllerLease(dir, () => resumeAskProBrowserSessionWithLease(options));
+}
+
+async function resumeAskProBrowserSessionWithLease({
   cwd,
   sessionId,
   temporary,
@@ -334,7 +349,7 @@ export async function resumeAskProBrowserSession({
       sessionId,
       "Retrying Temporary Chat session in normal ChatGPT; opening managed browser submission.",
     );
-    await runAskProBrowserSession({
+    await runAskProBrowserSessionWithLease({
       cwd,
       sessionId,
       temporary: false,
@@ -359,7 +374,7 @@ export async function resumeAskProBrowserSession({
     const shouldPreserveUrl =
       effectiveTemporary !== undefined ||
       (metadata.url !== undefined && !storedUrlIsDefaultTemporary);
-    await runAskProBrowserSession({
+    await runAskProBrowserSessionWithLease({
       cwd,
       sessionId,
       temporary: effectiveTemporary,
