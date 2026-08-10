@@ -1172,9 +1172,9 @@ describe("ask-pro cli", () => {
     expect(first.args).toEqual(["status"]);
     expect(second.args).toEqual(["resume"]);
     expect(first.launcher).toContain(cachedRunner);
-    expect(first.codexHome).toBe(await fs.realpath(codexHome));
-    expect(first.initCwd).toBe(await fs.realpath(projectCwd));
-    expect(first.cwd).toBe(await fs.realpath(projectCwd));
+    expect(await fs.realpath(first.codexHome)).toBe(await fs.realpath(codexHome));
+    expect(await fs.realpath(first.initCwd)).toBe(await fs.realpath(projectCwd));
+    expect(await fs.realpath(first.cwd)).toBe(await fs.realpath(projectCwd));
     await expect(fs.stat(staleStaging)).rejects.toThrow();
     await expect(fs.stat(staleRuntime)).rejects.toThrow();
     await expect(fs.stat(abandonedRuntime)).rejects.toThrow();
