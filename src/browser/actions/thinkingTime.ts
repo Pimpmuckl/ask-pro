@@ -334,7 +334,24 @@ function buildThinkingTimeExpression(level: ThinkingTimeLevel): string {
       if (!menu) return null;
       const target = findOptionInMenu(menu, { currentIntelligence: true });
       if (!target) {
-        return null;
+        const slider = menu.querySelector(
+          '[data-model-reasoning-effort-slider] [role="slider"][aria-valuemax]'
+        );
+        if (TARGET_LEVEL !== 'pro' || !slider) return null;
+        const max = Number(slider.getAttribute('aria-valuemax'));
+        const before = Number(slider.getAttribute('aria-valuenow'));
+        if (!Number.isFinite(max) || !Number.isFinite(before)) return null;
+        if (before < max) {
+          slider.focus?.();
+          slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', code: 'End', bubbles: true }));
+          slider.dispatchEvent(new KeyboardEvent('keyup', { key: 'End', code: 'End', bubbles: true }));
+          await sleep(STEP_WAIT_MS);
+          const updated = findCurrentIntelligenceMenu()?.querySelector(
+            '[data-model-reasoning-effort-slider] [role="slider"][aria-valuemax]'
+          ) ?? slider;
+          if (Number(updated.getAttribute('aria-valuenow')) < max) return null;
+        }
+        return { status: before >= max ? 'already-selected' : 'switched', label: 'Pro' };
       }
       const already = optionIsSelected(target);
       const label = target.textContent?.trim?.() || null;

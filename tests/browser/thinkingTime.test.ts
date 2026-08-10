@@ -89,6 +89,7 @@ class FakeElement extends EventTarget {
           (selector.includes('role="radio"') && role === "radio") ||
           (selector.includes('role="combobox"') && role === "combobox") ||
           (selector.includes('role="option"') && role === "option") ||
+          (selector.includes('role="slider"') && role === "slider") ||
           (selector.includes("menuitem") && role?.includes("menuitem"))
         ) {
           results.push(child);
@@ -547,6 +548,37 @@ describe("browser thinking-time selection expression", () => {
 
     expect(result).toEqual({ status: "switched", label: "Pro" });
     expect(proClicked).toBe(true);
+  });
+
+  it("selects Pro from the current reasoning-effort slider", async () => {
+    let endPressed = false;
+    const modelButton = new FakeElement("High", {
+      "aria-haspopup": "menu",
+      class: "__composer-pill __composer-pill--neutral",
+    });
+    const slider = new FakeElement(
+      "",
+      { "aria-valuemax": "4", "aria-valuemin": "0", "aria-valuenow": "3", role: "slider" },
+      [],
+      undefined,
+      (event) => {
+        if (event.type !== "keydown") return;
+        endPressed = true;
+        slider.setAttribute("aria-valuenow", "4");
+        modelButton.textContent = "Pro";
+      },
+    );
+    const menu = new FakeElement(
+      "Advanced Faster Smarter Model GPT-5.6 Sol Effort High",
+      { "data-testid": "composer-intelligence-picker-content", role: "group" },
+      [new FakeElement("", { "data-model-reasoning-effort-slider": "" }, [slider])],
+    );
+    const document = new FakeDocument(modelButton, [], {}, [], [menu]);
+
+    const result = await runThinkingTimeExpression(document, "pro");
+
+    expect(result).toEqual({ status: "switched", label: "Pro" });
+    expect(endPressed).toBe(true);
   });
 
   it("keeps fallback paths when the current Intelligence menu is unmatched", async () => {

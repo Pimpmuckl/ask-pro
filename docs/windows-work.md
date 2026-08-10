@@ -24,9 +24,9 @@ Read this when working on `ask_pro` from Windows and add new findings here.
 - Concurrent fresh and resumed runs on one managed profile use PID-backed
   browser-run leases. A completed run closes only its tab while peers remain;
   the last live run owns Chrome shutdown, and later runs prune dead leases.
-- The GPT-5.6 ChatGPT picker exposes `GPT-5.6 Sol` at the bottom of the model
-  menu and `Pro` as an Intelligence level. ask-pro selects them in that order;
-  there is no separate Extended control.
+- The GPT-5.6 ChatGPT picker exposes `GPT-5.6 Sol` under Advanced > Model and a
+  five-step reasoning-effort slider with `Pro` at the maximum. ask-pro selects
+  or confirms both before submission.
 - Fresh managed Chrome runs start minimized only after `ask-pro` has recorded
   that profile as auth-ready from a completed run. First login, resume/recovery,
   stale auth, challenges, and retained debug sessions should stay visible or

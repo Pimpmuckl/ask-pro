@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Select or confirm Pro through ChatGPT's new reasoning-effort slider before
+  submitting the prompt.
 - Coordinate shared managed Chrome with per-run leases so one run cannot close
   another run's in-flight browser, and transfer shutdown to the last live run.
 

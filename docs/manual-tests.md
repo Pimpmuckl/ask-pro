@@ -92,7 +92,8 @@ Expected:
 - Chrome opens with the ask-pro profile.
 - Fresh default runs open Temporary Chat first.
 - ChatGPT stays in English UI if possible.
-- The model picker selects `GPT-5.6 Sol`, then `Pro` intelligence.
+- The model picker selects `GPT-5.6 Sol`, then sets the reasoning-effort slider
+  to `Pro`.
 - If Temporary Chat hides Pro for the current account/UI, the run retries in
   normal ChatGPT.
 - The top-right temporary-chat control does not confuse the run state.
