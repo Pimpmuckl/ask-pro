@@ -106,6 +106,14 @@ const { AskProNeedsAuthError, resumeAskProBrowserSession, runAskProBrowserSessio
 
 const tempDirs: string[] = [];
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 beforeEach(async () => {
   managedProfileState.root = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-managed-root-"));
   managedProfileState.legacyRoot = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-legacy-root-"));
@@ -134,6 +142,119 @@ afterEach(async () => {
 });
 
 describe("ask-pro browser runner", () => {
+  test("rejects a live same-session controller and releases the lease in finally", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-controller-live-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Keep one controller per session.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    const entered = deferred();
+    const finish = deferred();
+    runBrowserModeMock.mockImplementationOnce(async () => {
+      entered.resolve();
+      await finish.promise;
+      return {
+        answerText: "agent answer",
+        answerMarkdown: "# Agent\n",
+        browserTransport: "launched",
+      };
+    });
+
+    const first = runAskProBrowserSession({ cwd, sessionId: session.id });
+    await entered.promise;
+    await expect(resumeAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      `ask-pro session controller is already running (pid ${process.pid})`,
+    );
+    finish.resolve();
+    await first;
+
+    runBrowserModeMock.mockRejectedValueOnce(new Error("browser failed"));
+    await expect(runAskProBrowserSession({ cwd, sessionId: session.id })).rejects.toThrow(
+      "browser failed",
+    );
+    await runAskProBrowserSession({ cwd, sessionId: session.id });
+    await expect(fs.stat(path.join(session.dir, ".controller.lease"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  test("recovers a stale session-controller owner", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-controller-stale-"));
+    tempDirs.push(cwd);
+    const session = await createAskProSession({
+      cwd,
+      question: "Recover the stale controller.",
+      filePatterns: [],
+      dryRun: false,
+    });
+    const leaseDir = path.join(session.dir, ".controller.lease");
+    await fs.mkdir(leaseDir);
+    await fs.writeFile(path.join(leaseDir, "2147483647-stale.owner"), "");
+    const entered = deferred();
+    const finish = deferred();
+    runBrowserModeMock.mockImplementation(async () => {
+      entered.resolve();
+      await finish.promise;
+      return {
+        answerText: "agent answer",
+        answerMarkdown: "# Agent\n",
+        browserTransport: "launched",
+      };
+    });
+
+    const runs = [
+      runAskProBrowserSession({ cwd, sessionId: session.id }),
+      runAskProBrowserSession({ cwd, sessionId: session.id }),
+    ];
+    const rejected = deferred();
+    for (const run of runs) void run.catch(() => rejected.resolve());
+    const outcomesPromise = Promise.allSettled(runs);
+    await entered.promise;
+    await rejected.promise;
+    finish.resolve();
+    const outcomes = await outcomesPromise;
+
+    expect(runBrowserModeMock).toHaveBeenCalledTimes(1);
+    expect(outcomes.map(({ status }) => status).sort()).toEqual(["fulfilled", "rejected"]);
+  });
+
+  test("allows browser controllers for different sessions to run concurrently", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-controller-concurrent-"));
+    tempDirs.push(cwd);
+    const sessions = await Promise.all(
+      ["first", "second"].map((name) =>
+        createAskProSession({
+          cwd,
+          question: `${name} concurrent session.`,
+          filePatterns: [],
+          dryRun: false,
+        }),
+      ),
+    );
+    const bothEntered = deferred();
+    const finish = deferred();
+    let entered = 0;
+    runBrowserModeMock.mockImplementation(async () => {
+      if (++entered === 2) bothEntered.resolve();
+      await finish.promise;
+      return {
+        answerText: "agent answer",
+        answerMarkdown: "# Agent\n",
+        browserTransport: "launched",
+      };
+    });
+
+    const runs = sessions.map((session) => runAskProBrowserSession({ cwd, sessionId: session.id }));
+    await bothEntered.promise;
+    finish.resolve();
+    await Promise.all(runs);
+
+    expect(runBrowserModeMock).toHaveBeenCalledTimes(2);
+  });
+
   test("runs ask-pro sessions with the explicit agent profile", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-agent-"));
     tempDirs.push(cwd);

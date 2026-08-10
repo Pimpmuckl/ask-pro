@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Prevent concurrent browser controllers from mutating the same ask-pro session.
 - Preserve mutable recovery files when a replacement write fails.
 - Require state-bearing Temporary Chat evidence, delegate manual-login restart
   cleanup correctly, and persist captured answers before browser cleanup.
