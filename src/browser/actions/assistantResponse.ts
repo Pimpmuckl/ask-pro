@@ -8,7 +8,7 @@ import {
   STOP_BUTTON_SELECTOR,
 } from "../constants.js";
 import { delay } from "../utils.js";
-import { logDomFailure, buildDomControlInventoryExpression } from "../domDebug.js";
+import { logDomFailure } from "../domDebug.js";
 import { buildClickDispatcher } from "./domEvents.js";
 
 const ASSISTANT_POLL_TIMEOUT_ERROR = "assistant-response-watchdog-timeout";
@@ -274,10 +274,6 @@ export function buildAssistantSnapshotExpressionForTest(
   expectedConversationId?: string,
 ): string {
   return buildAssistantSnapshotExpression(minTurnIndex, expectedConversationId);
-}
-
-export function buildConversationDebugExpressionForTest(): string {
-  return buildDomControlInventoryExpression();
 }
 
 export function buildMarkdownFallbackExtractorForTest(minTurnLiteral = "0"): string {
