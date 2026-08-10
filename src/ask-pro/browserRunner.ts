@@ -70,6 +70,7 @@ export async function runAskProBrowserSession({
         : (metadata?.url ?? ASK_PRO_TEMPORARY_CHATGPT_URL));
   await fs.mkdir(browserProfile, { recursive: true });
   const startMinimized = allowStartMinimized && (await hasAuthReadyMarker(browserProfile));
+  let capturedFinalStatus: FinalAnswerStatus | null = null;
   await writeAskProBrowserMetadata({
     cwd,
     sessionId,
@@ -144,8 +145,14 @@ export async function runAskProBrowserSession({
           input: Input,
           logger,
         });
-        const finalStatus = await classifyFinalAnswer(paths.dir, answer.markdown || answer.text);
-        if (finalStatus.status === "INCOMPLETE_ANSWER") {
+        capturedFinalStatus = await persistCapturedAnswer({
+          cwd,
+          sessionId,
+          sessionDir: paths.dir,
+          answer: answer.markdown || answer.text,
+          artifactsRequested,
+        });
+        if (capturedFinalStatus.status === "INCOMPLETE_ANSWER") {
           logger("Keeping browser open for incomplete-answer debugging.");
           return { keepBrowserOpen: true };
         }
@@ -154,9 +161,15 @@ export async function runAskProBrowserSession({
     });
 
     const answer = result.answerMarkdown || result.answerText;
-    await writeAskProAnswer({ cwd, sessionId, answer });
-    await ensureResponseZipManifest(paths.dir, artifactsRequested);
-    const finalStatus = await classifyFinalAnswer(paths.dir, answer);
+    const finalStatus =
+      capturedFinalStatus ??
+      (await persistCapturedAnswer({
+        cwd,
+        sessionId,
+        sessionDir: paths.dir,
+        answer,
+        artifactsRequested,
+      }));
     await writeAskProBrowserMetadata({
       cwd,
       sessionId,
@@ -172,17 +185,14 @@ export async function runAskProBrowserSession({
         runtime: browserResultToRuntime(result),
       },
     });
-    await updateAskProStatus({
-      cwd,
-      sessionId,
-      status: finalStatus.status,
-      reason: finalStatus.reason,
-    });
     if (finalStatus.status === "COMPLETED") {
       await recordAuthReadyMarker(browserProfile, logger);
     }
     return result;
   } catch (error) {
+    if (capturedFinalStatus) {
+      throw error;
+    }
     if (
       shouldFallbackFromDefaultTemporaryChat(error, {
         chatgptUrl,
@@ -309,6 +319,7 @@ export async function resumeAskProBrowserSession({
         ? ASK_PRO_CHATGPT_URL
         : (metadata.url ?? ASK_PRO_TEMPORARY_CHATGPT_URL);
   const fallbackProfile = await resolveResumeBrowserProfile(metadata);
+  let capturedFinalStatus: FinalAnswerStatus | null = null;
   if (metadata.runtime) {
     metadata.runtime = normalizeResumeRuntime(
       metadata.runtime,
@@ -422,8 +433,14 @@ export async function resumeAskProBrowserSession({
             input: Input,
             logger,
           });
-          const finalStatus = await classifyFinalAnswer(paths.dir, answer.markdown || answer.text);
-          if (finalStatus.status === "INCOMPLETE_ANSWER") {
+          capturedFinalStatus = await persistCapturedAnswer({
+            cwd,
+            sessionId,
+            sessionDir: paths.dir,
+            answer: answer.markdown || answer.text,
+            artifactsRequested,
+          });
+          if (capturedFinalStatus.status === "INCOMPLETE_ANSWER") {
             logger("Keeping browser open for incomplete-answer debugging.");
             return { keepBrowserOpen: true };
           }
@@ -432,9 +449,15 @@ export async function resumeAskProBrowserSession({
       },
     );
     const answer = result.answerMarkdown || result.answerText;
-    await writeAskProAnswer({ cwd, sessionId, answer });
-    await ensureResponseZipManifest(paths.dir, artifactsRequested);
-    const finalStatus = await classifyFinalAnswer(paths.dir, answer);
+    const finalStatus =
+      capturedFinalStatus ??
+      (await persistCapturedAnswer({
+        cwd,
+        sessionId,
+        sessionDir: paths.dir,
+        answer,
+        artifactsRequested,
+      }));
     await writeAskProBrowserMetadata({
       cwd,
       sessionId,
@@ -450,16 +473,13 @@ export async function resumeAskProBrowserSession({
         reason: undefined,
       },
     });
-    await updateAskProStatus({
-      cwd,
-      sessionId,
-      status: finalStatus.status,
-      reason: finalStatus.reason,
-    });
     if (finalStatus.status === "COMPLETED") {
       await recordAuthReadyMarker(fallbackProfile, logger);
     }
   } catch (error) {
+    if (capturedFinalStatus) {
+      throw error;
+    }
     if (isAuthGateError(error)) {
       const currentMetadata = await readBrowserMetadata(paths.browser).catch(() => metadata);
       await writeAskProBrowserMetadata({
@@ -674,6 +694,33 @@ async function classifyFinalAnswer(
     browserStatus: "incomplete_answer",
     reason: "preamble_without_artifacts",
   };
+}
+
+type FinalAnswerStatus = Awaited<ReturnType<typeof classifyFinalAnswer>>;
+
+async function persistCapturedAnswer({
+  cwd,
+  sessionId,
+  sessionDir,
+  answer,
+  artifactsRequested,
+}: {
+  cwd: string;
+  sessionId: string;
+  sessionDir: string;
+  answer: string;
+  artifactsRequested: boolean;
+}): Promise<FinalAnswerStatus> {
+  await writeAskProAnswer({ cwd, sessionId, answer });
+  await ensureResponseZipManifest(sessionDir, artifactsRequested);
+  const finalStatus = await classifyFinalAnswer(sessionDir, answer);
+  await updateAskProStatus({
+    cwd,
+    sessionId,
+    status: finalStatus.status,
+    reason: finalStatus.reason,
+  });
+  return finalStatus;
 }
 
 async function hasCompleteResponseZip(sessionDir: string): Promise<boolean> {

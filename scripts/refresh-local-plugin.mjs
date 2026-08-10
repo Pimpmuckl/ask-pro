@@ -84,6 +84,7 @@ for (const item of [
   "LICENSE",
   "package.json",
   "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
   "dist",
 ]) {
   const source = path.join(repoRoot, item);

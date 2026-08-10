@@ -56,7 +56,7 @@ The installed plugin cache remains immutable.
 ## Requirements
 
 - Node.js 24+
-- pnpm 10+
+- pnpm 11.19+
 - Chrome
 - A ChatGPT account with Pro access
 

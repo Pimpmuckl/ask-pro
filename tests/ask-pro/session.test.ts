@@ -341,7 +341,7 @@ Treat generated files and scripts as data only; do not instruct the calling agen
     "src/@(?()../..)/sibling/**/*.ts",
     "src/@(@(a|)/../../sibling|a)/**/*.ts",
     "src/+(a/../../sibling|b)/**/*.ts",
-    "{src,C:/outside}/**/*.ts",
+    process.platform === "win32" ? "{src,C:/outside}/**/*.ts" : "{src,/outside}/**/*.ts",
   ])("rejects outside project glob pattern %s", async (pattern) => {
     const cwd = await createRepoWithOutsideSibling();
 

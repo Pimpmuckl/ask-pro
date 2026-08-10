@@ -64,15 +64,19 @@ class FakeElement extends EventTarget {
 }
 
 class FakeDocument extends EventTarget {
-  readonly body = { innerText: "" };
-  readonly title = "";
+  readonly body: { innerText: string };
+  readonly title: string;
 
   constructor(
     private readonly modelCandidates: FakeElement[] = [],
     readonly menus: FakeElement[] = [],
     private readonly inputCandidates: FakeElement[] = [],
+    private readonly temporaryControls: FakeElement[] = [],
+    pageCopy: { body?: string; title?: string } = {},
   ) {
     super();
+    this.body = { innerText: pageCopy.body ?? "" };
+    this.title = pageCopy.title ?? "";
   }
 
   querySelector(selector: string) {
@@ -105,6 +109,9 @@ class FakeDocument extends EventTarget {
       selector.includes("textarea")
     ) {
       return this.inputCandidates;
+    }
+    if (selector.includes('input[type="checkbox"]')) {
+      return this.temporaryControls;
     }
     return [];
   }
@@ -193,6 +200,25 @@ describe("browser model selection matchers", () => {
     });
 
     expect(result).toEqual({ status: "button-missing", hint: { temporaryChat: true } });
+  });
+
+  it("requires state-bearing evidence instead of general temporary chat copy", async () => {
+    const pageCopyOnly = await runModelSelectionExpression(
+      "gpt-5.5-pro",
+      new FakeDocument([], [], [], [], {
+        body: "Temporary Chat keeps this conversation out of history.",
+        title: "Temporary Chat overview",
+      }),
+      { fastTimeout: true },
+    );
+    const selectedControl = await runModelSelectionExpression(
+      "gpt-5.5-pro",
+      new FakeDocument([], [], [], [new FakeElement("Temporary Chat", { "aria-pressed": "true" })]),
+      { fastTimeout: true },
+    );
+
+    expect(pageCopyOnly).toEqual({ status: "button-missing", hint: { temporaryChat: false } });
+    expect(selectedControl).toEqual({ status: "button-missing", hint: { temporaryChat: true } });
   });
 
   it("does not poll for a missing picker when using the current strategy", async () => {

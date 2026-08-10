@@ -210,7 +210,7 @@ async function bootstrap(root, packageJson) {
       [
         "exec",
         "--yes",
-        "pnpm@10.33.2",
+        "pnpm@11.19.0",
         "--",
         "install",
         "--frozen-lockfile",
@@ -221,7 +221,7 @@ async function bootstrap(root, packageJson) {
     );
   }
   if (needsBuild) {
-    await runNpm(["exec", "--yes", "pnpm@10.33.2", "--", "run", "build"], root);
+    await runNpm(["exec", "--yes", "pnpm@11.19.0", "--", "run", "build"], root);
   }
   if (!fs.existsSync(cli)) {
     throw new Error(`ask-pro bootstrap completed but CLI entry is still missing: ${cli}`);

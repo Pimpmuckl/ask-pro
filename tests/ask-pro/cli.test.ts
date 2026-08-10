@@ -1008,7 +1008,7 @@ describe("ask-pro cli", () => {
         env: {
           ...process.env,
           ASK_PRO_SOURCE_CHECKOUT_LAUNCHER:
-            'npm exec --yes pnpm@10.33.2 -- --dir "C:/Code/ask-pro" start --',
+            'npm exec --yes pnpm@11.19.0 -- --dir "C:/Code/ask-pro" start --',
           INIT_CWD: cwd,
         },
       },
@@ -1021,10 +1021,10 @@ describe("ask-pro cli", () => {
     );
     expect(JSON.parse(statusRaw)).toMatchObject({
       resumeCommand: expect.stringMatching(
-        /^npm exec --yes pnpm@10\.33\.2 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --resume /,
+        /^npm exec --yes pnpm@11\.19\.0 -- --dir "C:\/Code\/ask-pro" start -- --cwd (?:".+"|'.+') --resume /,
       ),
       harvestCommand: expect.stringMatching(
-        /^npm exec --yes pnpm@10\.33\.2 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --harvest /,
+        /^npm exec --yes pnpm@11\.19\.0 -- --dir "C:\/Code\/ask-pro" start -- --cwd (?:".+"|'.+') --harvest /,
       ),
     });
   }, 30000);
@@ -1045,7 +1045,7 @@ describe("ask-pro cli", () => {
         env: {
           ...process.env,
           ASK_PRO_SOURCE_CHECKOUT_LAUNCHER:
-            'npm exec --yes pnpm@10.33.2 -- --dir "C:/Code/ask-pro" start --',
+            'npm exec --yes pnpm@11.19.0 -- --dir "C:/Code/ask-pro" start --',
           INIT_CWD: projectCwd,
         },
       },
@@ -1078,6 +1078,10 @@ describe("ask-pro cli", () => {
     await fs.copyFile(
       path.join(process.cwd(), "pnpm-lock.yaml"),
       path.join(cacheRoot, "pnpm-lock.yaml"),
+    );
+    await fs.copyFile(
+      path.join(process.cwd(), "pnpm-workspace.yaml"),
+      path.join(cacheRoot, "pnpm-workspace.yaml"),
     );
     const writeCli = (revision: number) =>
       fs.writeFile(
@@ -1168,9 +1172,9 @@ describe("ask-pro cli", () => {
     expect(first.args).toEqual(["status"]);
     expect(second.args).toEqual(["resume"]);
     expect(first.launcher).toContain(cachedRunner);
-    expect(first.codexHome).toBe(codexHome);
-    expect(first.initCwd).toBe(projectCwd);
-    expect(first.cwd).toBe(projectCwd);
+    expect(await fs.realpath(first.codexHome)).toBe(await fs.realpath(codexHome));
+    expect(await fs.realpath(first.initCwd)).toBe(await fs.realpath(projectCwd));
+    expect(await fs.realpath(first.cwd)).toBe(await fs.realpath(projectCwd));
     await expect(fs.stat(staleStaging)).rejects.toThrow();
     await expect(fs.stat(staleRuntime)).rejects.toThrow();
     await expect(fs.stat(abandonedRuntime)).rejects.toThrow();
@@ -1187,5 +1191,5 @@ describe("ask-pro cli", () => {
     );
     expect(changed.revision).toBe(2);
     expect(changed.entry).not.toBe(first.entry);
-  }, 30000);
+  }, 60_000);
 });

@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Require state-bearing Temporary Chat evidence, delegate manual-login restart
+  cleanup correctly, and persist captured answers before browser cleanup.
 - Select or confirm Pro through ChatGPT's new reasoning-effort slider before
   submitting the prompt.
 - Coordinate shared managed Chrome with per-run leases so one run cannot close
@@ -11,6 +13,8 @@
 
 ### Changed
 
+- Refresh package, pnpm, and CI action versions, and enforce the seven-day
+  package-age and dependency-build policies through `pnpm-workspace.yaml`.
 - Trim the mandatory Pro prompt wrapper, make the uploaded context evidence-only,
   and keep style, severity ranking, and output detail task-specific for GPT-5.6.
 - Permanently delete entire ask-pro session directories at least seven days old

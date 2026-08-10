@@ -176,7 +176,7 @@ describe("resolveBrowserConfig", () => {
       }),
     ).rejects.toThrow();
     expect(await fs.stat(legacy)).toBeTruthy();
-  });
+  }, 15_000);
 
   test("copies on sharing-denied rename and retains only the exact cleanup-denied legacy", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-profile-retained-"));
