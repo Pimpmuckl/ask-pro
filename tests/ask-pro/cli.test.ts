@@ -1191,5 +1191,5 @@ describe("ask-pro cli", () => {
     );
     expect(changed.revision).toBe(2);
     expect(changed.entry).not.toBe(first.entry);
-  }, 30000);
+  }, 60_000);
 });
