@@ -14,18 +14,22 @@ export function buildDomControlInventoryExpression(): string {
     const allowed = (value, values) => values.includes(value) ? value : null;
     const state = (node, name) => allowed(node.getAttribute(name), ['true', 'false', 'mixed']);
     const nodes = Array.from(document.querySelectorAll(selector));
-    const controls = nodes.slice(0, ${MAX_CONTROLS}).map((node, index) => {
+    const controls = nodes.map((node, index) => {
       const style = getComputedStyle(node);
+      const visible = node.getClientRects().length > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      const focused = document.activeElement === node;
+      const inOverlay = Boolean(node.closest('[role="dialog"], dialog, [aria-modal="true"]'));
       let depth = 0;
       for (let parent = node.parentElement; parent && depth < 12; parent = parent.parentElement) depth += 1;
-      return {
+      const control = {
         index,
         tag: allowed(node.tagName.toLowerCase(), ['button', 'input', 'select', 'textarea']) ?? 'other',
         role: allowed(node.getAttribute('role'), ['button', 'combobox', 'dialog', 'listbox', 'menu', 'menuitem', 'option', 'radio', 'switch', 'tab']),
         type: allowed(node.getAttribute('type'), ['button', 'checkbox', 'file', 'radio', 'reset', 'submit', 'text']),
-        visible: node.getClientRects().length > 0 && style.display !== 'none' && style.visibility !== 'hidden',
+        visible,
         disabled: node.disabled === true || node.getAttribute('aria-disabled') === 'true',
-        focused: document.activeElement === node,
+        focused,
+        inOverlay,
         expanded: state(node, 'aria-expanded'),
         pressed: state(node, 'aria-pressed'),
         checked: state(node, 'aria-checked'),
@@ -35,7 +39,9 @@ export function buildDomControlInventoryExpression(): string {
         depth,
         childControls: Math.min(node.querySelectorAll(selector).length, ${MAX_CONTROLS}),
       };
-    });
+      return { control, score: (focused ? 4 : 0) + (inOverlay ? 2 : 0) + (visible ? 1 : 0) };
+    }).sort((a, b) => b.score - a.score || a.control.index - b.control.index)
+      .slice(0, ${MAX_CONTROLS}).map(({ control }) => control);
     return { matchedControls: nodes.length, truncated: nodes.length > ${MAX_CONTROLS}, controls };
   })()`;
 }

@@ -14,6 +14,7 @@ function node(
     getAttribute: (name: string) => attributes[name] ?? null,
     getClientRects: () => [1],
     querySelectorAll: () => [],
+    closest: () => null,
     innerText: "SECRET PROMPT",
     innerHTML: "<b>SECRET ANSWER</b>",
     value: "C:/private/file.txt",
@@ -21,8 +22,8 @@ function node(
   };
 }
 
-function evaluateInventory(nodes: unknown[]) {
-  const document = { querySelectorAll: () => nodes, activeElement: nodes[0] };
+function evaluateInventory(nodes: unknown[], activeElement = nodes[0]) {
+  const document = { querySelectorAll: () => nodes, activeElement };
   return new Function(
     "document",
     "getComputedStyle",
@@ -63,6 +64,11 @@ describe("DOM failure diagnostics", () => {
     });
     expect(json).not.toMatch(
       /SECRET|private|file\.txt|innerText|innerHTML|value|href|cookie|token/i,
+    );
+
+    const latePicker = controls.at(-1);
+    expect(evaluateInventory(controls, latePicker).controls).toContainEqual(
+      expect.objectContaining({ index: 39, focused: true }),
     );
   });
 
