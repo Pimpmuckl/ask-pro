@@ -1021,10 +1021,10 @@ describe("ask-pro cli", () => {
     );
     expect(JSON.parse(statusRaw)).toMatchObject({
       resumeCommand: expect.stringMatching(
-        /^npm exec --yes pnpm@11\.19\.0 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --resume /,
+        /^npm exec --yes pnpm@11\.19\.0 -- --dir "C:\/Code\/ask-pro" start -- --cwd (?:".+"|'.+') --resume /,
       ),
       harvestCommand: expect.stringMatching(
-        /^npm exec --yes pnpm@11\.19\.0 -- --dir "C:\/Code\/ask-pro" start -- --cwd ".+" --harvest /,
+        /^npm exec --yes pnpm@11\.19\.0 -- --dir "C:\/Code\/ask-pro" start -- --cwd (?:".+"|'.+') --harvest /,
       ),
     });
   }, 30000);
@@ -1172,9 +1172,9 @@ describe("ask-pro cli", () => {
     expect(first.args).toEqual(["status"]);
     expect(second.args).toEqual(["resume"]);
     expect(first.launcher).toContain(cachedRunner);
-    expect(first.codexHome).toBe(codexHome);
-    expect(first.initCwd).toBe(projectCwd);
-    expect(first.cwd).toBe(projectCwd);
+    expect(first.codexHome).toBe(await fs.realpath(codexHome));
+    expect(first.initCwd).toBe(await fs.realpath(projectCwd));
+    expect(first.cwd).toBe(await fs.realpath(projectCwd));
     await expect(fs.stat(staleStaging)).rejects.toThrow();
     await expect(fs.stat(staleRuntime)).rejects.toThrow();
     await expect(fs.stat(abandonedRuntime)).rejects.toThrow();
