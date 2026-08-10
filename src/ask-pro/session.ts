@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import fg from "fast-glob";
+import { atomicWriteFile } from "./atomicWrite.js";
 import { createStoredZip } from "./zip.js";
 
 export type AskProStatus =
@@ -279,7 +280,7 @@ export async function updateAskProStatus({
     ...(reason ? { reason } : {}),
     ...(temporary !== undefined ? { temporary } : {}),
   };
-  await fs.writeFile(paths.status, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  await atomicWriteFile(paths.status, `${JSON.stringify(next, null, 2)}\n`);
   await appendAskProLog(cwd, sessionId, `status=${status}${reason ? ` reason=${reason}` : ""}`);
   return next;
 }
@@ -306,7 +307,7 @@ export async function updateAskProResumeCommand({
     ...(temporary !== undefined ? { temporary } : {}),
     updatedAt: new Date().toISOString(),
   };
-  await fs.writeFile(paths.status, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  await atomicWriteFile(paths.status, `${JSON.stringify(next, null, 2)}\n`);
   return next;
 }
 
@@ -320,7 +321,7 @@ export async function writeAskProAnswer({
   answer: string;
 }): Promise<void> {
   const paths = getAskProSessionPaths(cwd, sessionId);
-  await fs.writeFile(paths.answer, answer.endsWith("\n") ? answer : `${answer}\n`, "utf8");
+  await atomicWriteFile(paths.answer, answer.endsWith("\n") ? answer : `${answer}\n`);
 }
 
 export async function writeAskProBrowserMetadata({
@@ -333,7 +334,7 @@ export async function writeAskProBrowserMetadata({
   metadata: unknown;
 }): Promise<void> {
   const paths = getAskProSessionPaths(cwd, sessionId);
-  await fs.writeFile(paths.browser, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+  await atomicWriteFile(paths.browser, `${JSON.stringify(metadata, null, 2)}\n`);
 }
 
 export async function appendAskProLog(
