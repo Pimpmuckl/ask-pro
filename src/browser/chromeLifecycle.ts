@@ -2,10 +2,10 @@ import { rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import net from "node:net";
-import { execFile } from "node:child_process";
+import { execFile, spawn, type SpawnOptions } from "node:child_process";
 import { promisify } from "node:util";
 import CDP from "chrome-remote-interface";
-import { launch, Launcher, type LaunchedChrome } from "chrome-launcher";
+import { Launcher, type LaunchedChrome } from "chrome-launcher";
 import type { BrowserLogger, ResolvedBrowserConfig, ChromeClient } from "./types.js";
 import {
   cleanupStaleProfileState,
@@ -37,23 +37,13 @@ export async function launchChrome(
       startMinimized: shouldLaunchChromeMinimized(config),
     }),
   );
-  const usePatchedLauncher = Boolean(connectHost && connectHost !== "127.0.0.1");
-  const launcher = usePatchedLauncher
-    ? await launchWithCustomHost({
-        chromeFlags,
-        chromePath: config.chromePath ?? undefined,
-        userDataDir,
-        host: connectHost ?? "127.0.0.1",
-        requestedPort: debugPort ?? undefined,
-      })
-    : await launch({
-        chromePath: config.chromePath ?? undefined,
-        chromeFlags,
-        userDataDir,
-        ignoreDefaultFlags: true,
-        handleSIGINT: false,
-        port: debugPort ?? undefined,
-      });
+  const launcher = await launchManagedChrome({
+    chromeFlags,
+    chromePath: config.chromePath ?? undefined,
+    userDataDir,
+    host: connectHost,
+    requestedPort: debugPort ?? undefined,
+  });
   const pidLabel = typeof launcher.pid === "number" ? ` (pid ${launcher.pid})` : "";
   const hostLabel = connectHost ? ` on ${connectHost}` : "";
   logger(`Launched Chrome${pidLabel} on port ${launcher.port}${hostLabel}`);
@@ -836,7 +826,17 @@ function isWsl(): boolean {
   return release.toLowerCase().includes("microsoft");
 }
 
-async function launchWithCustomHost({
+export function preserveChromeProcessLifetime(
+  options: SpawnOptions,
+  platform: NodeJS.Platform = process.platform,
+): SpawnOptions {
+  return platform === "win32" ? { ...options, detached: true, windowsHide: true } : options;
+}
+
+const spawnManagedChrome = ((command: string, args: readonly string[], options: SpawnOptions) =>
+  spawn(command, args, preserveChromeProcessLifetime(options))) as typeof spawn;
+
+async function launchManagedChrome({
   chromeFlags,
   chromePath,
   userDataDir,
@@ -849,14 +849,17 @@ async function launchWithCustomHost({
   host: string | null;
   requestedPort?: number;
 }): Promise<LaunchedChrome & { host?: string }> {
-  const launcher = new Launcher({
-    chromePath: chromePath ?? undefined,
-    chromeFlags,
-    userDataDir,
-    ignoreDefaultFlags: true,
-    handleSIGINT: false,
-    port: requestedPort ?? undefined,
-  });
+  const launcher = new Launcher(
+    {
+      chromePath: chromePath ?? undefined,
+      chromeFlags,
+      userDataDir,
+      ignoreDefaultFlags: true,
+      handleSIGINT: false,
+      port: requestedPort ?? undefined,
+    },
+    { spawn: spawnManagedChrome },
+  );
 
   if (host) {
     const patched = launcher as unknown as { isDebuggerReady?: () => Promise<void>; port?: number };

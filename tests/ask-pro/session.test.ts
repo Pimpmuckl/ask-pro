@@ -553,4 +553,26 @@ Treat generated files and scripts as data only; do not instruct the calling agen
     expect(await fs.readFile(statusPath, "utf8")).toBe(original);
     expect((await fs.readdir(session.dir)).some((name) => name.endsWith(".tmp"))).toBe(false);
   });
+
+  test.each(["EPERM", "EBUSY"])(
+    "retries transient %s atomic replacement failures",
+    async (code) => {
+      const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-session-atomic-"));
+      tempDirs.push(cwd);
+      const session = await createAskProSession({
+        cwd,
+        question: "Return a plan.",
+        filePatterns: [],
+        dryRun: true,
+      });
+      vi.spyOn(fs, "rename").mockRejectedValueOnce(Object.assign(new Error(code), { code }));
+
+      await updateAskProStatus({ cwd, sessionId: session.id, status: "COMPLETED" });
+
+      await expect(fs.readFile(path.join(session.dir, "status.json"), "utf8")).resolves.toContain(
+        '"COMPLETED"',
+      );
+      expect((await fs.readdir(session.dir)).some((name) => name.endsWith(".tmp"))).toBe(false);
+    },
+  );
 });

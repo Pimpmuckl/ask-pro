@@ -12,7 +12,7 @@ Project dir:  .ask-pro/
 Global state: $CODEX_HOME/state/ask-pro/
 ```
 
-Agent-specific browser profiles:
+Explicitly isolated browser profiles:
 
 ```bash
 ASK_PRO_AGENT_ID=review-t1 ask-pro "<question>"
@@ -28,10 +28,10 @@ refuses active-profile migration and profile collisions instead of merging.
 `ASK_PRO_AGENT_ID` must be lowercase and may contain only letters, numbers,
 `.`, `_`, or `-`.
 
-Leave `ASK_PRO_AGENT_ID` unset for normal single-agent use. Set it only for
-concurrent or role-specific agents that need isolated browser profiles, and
-reuse stable ids. One-off ids create new Chrome profiles and may require a fresh
-human login.
+Leave `ASK_PRO_AGENT_ID` unset for normal and concurrent use; the shared profile
+handles concurrent agents automatically. Set it only for explicit profile
+isolation or a separate browser login, and reuse stable ids. One-off ids create
+new Chrome profiles and may require a fresh human login.
 
 ## Avoid
 

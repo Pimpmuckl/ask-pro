@@ -75,13 +75,13 @@ If login, MFA, a browser challenge, or incomplete-answer debugging needs human
 attention, ask-pro should restore or retain the browser and emit the next
 action.
 
-Do not set `ASK_PRO_AGENT_ID` for ordinary single-agent use; the shared
-`ask-pro` browser profile under `$CODEX_HOME/state/ask-pro/` is already
-persistent. Set `ASK_PRO_AGENT_ID` only
-when separate agents truly need isolated browser profiles, such as concurrent
-review lanes. Use a stable reusable lowercase id like `review-t1`, not a
-one-off task slug, because each new id creates a new Chrome profile and may
-require the human to log in again. Example:
+Do not set `ASK_PRO_AGENT_ID` for ordinary or concurrent use; the shared
+`ask-pro` browser profile under `$CODEX_HOME/state/ask-pro/` handles concurrent
+agents automatically. Set `ASK_PRO_AGENT_ID` only when explicitly testing an
+isolated profile or when the human requests a separate browser login. Use a
+stable reusable lowercase id like `review-t1`, not a one-off task slug, because
+each new id creates a new Chrome profile and may require the human to log in
+again. Example:
 `ASK_PRO_AGENT_ID=review-t1 ask-pro ...`.
 
 ## Prompt Shape

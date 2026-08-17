@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Keep shared managed Chrome alive when its launching Windows controller exits,
+  and retry transient recovery-file replacements.
 - Replace conversation snapshots in verbose browser failure logs with bounded,
   content-free control inventories for DOM repair.
 - Prevent concurrent browser controllers from mutating the same ask-pro session.

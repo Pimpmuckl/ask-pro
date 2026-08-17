@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   buildChromeLaunchFlags,
   buildChromeFlags,
+  preserveChromeProcessLifetime,
   restoreChromeWindowByPid,
   shouldLaunchChromeMinimized,
 } from "../../src/browser/chromeLifecycle.js";
@@ -43,6 +44,14 @@ describe("chrome lifecycle window restore", () => {
 });
 
 describe("chrome lifecycle launch window state", () => {
+  test("keeps managed Chrome independent of its Windows controller process", () => {
+    const windowsOptions = preserveChromeProcessLifetime({ detached: false }, "win32");
+    const linuxOptions = { detached: false };
+
+    expect(windowsOptions).toMatchObject({ detached: true, windowsHide: true });
+    expect(preserveChromeProcessLifetime(linuxOptions, "linux")).toBe(linuxOptions);
+  });
+
   test("keeps Chrome CPU protections enabled for long headed waits", () => {
     const flags = buildChromeLaunchFlags(buildChromeFlags(false, undefined, "en-US,en"));
 
