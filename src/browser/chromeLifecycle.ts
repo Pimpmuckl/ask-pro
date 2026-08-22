@@ -1,8 +1,10 @@
 import { rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import { EventEmitter } from "node:events";
 import os from "node:os";
 import net from "node:net";
-import { execFile, spawn, type SpawnOptions } from "node:child_process";
+import { execFile, spawn, spawnSync, type SpawnOptions } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import CDP from "chrome-remote-interface";
 import { Launcher, type LaunchedChrome } from "chrome-launcher";
@@ -15,6 +17,7 @@ import {
 } from "./profileState.js";
 import { delay } from "./utils.js";
 import { formatElapsed } from "./format.js";
+import { withTimeout } from "./reattachHelpers.js";
 
 const execFileAsync = promisify(execFile);
 const CPU_THROTTLING_OVERRIDE_FLAGS = new Set([
@@ -193,27 +196,35 @@ export async function closeChromeGracefully(
 ): Promise<void> {
   const port = chrome.port;
   const host = chrome.host ?? "127.0.0.1";
-  if (port) {
-    try {
-      const version = (await CDP.Version({ host, port })) as { webSocketDebuggerUrl?: string };
-      const target = version.webSocketDebuggerUrl;
-      const client = (await CDP(target ? { target, local: true } : { host, port })) as ChromeClient;
-      try {
-        await client.Browser?.close?.();
-      } finally {
-        await client.close().catch(() => undefined);
-      }
-      await waitForChromeExit(chrome.pid, 2500);
-      if (!chrome.pid || !isPidAlive(chrome.pid)) {
-        chrome.process?.unref?.();
-        return;
-      }
-      logger?.("Chrome did not exit after Browser.close; terminating process.");
-    } catch (error) {
-      if (logger?.verbose) {
-        const message = error instanceof Error ? error.message : String(error);
-        logger(`Graceful Chrome close failed (${message}); terminating process.`);
-      }
+  const shutdownDeadline = Date.now() + 20_000;
+  try {
+    await withTimeout(
+      (async () => {
+        if (!port) throw new Error("missing DevTools port");
+        const version = (await CDP.Version({ host, port })) as { webSocketDebuggerUrl?: string };
+        const target = version.webSocketDebuggerUrl;
+        const client = (await CDP(
+          target ? { target, local: true } : { host, port },
+        )) as ChromeClient;
+        try {
+          await client.Browser?.close?.();
+        } finally {
+          await client.close().catch(() => undefined);
+        }
+        await waitForChromeExit(chrome.pid, Math.max(0, shutdownDeadline - Date.now()));
+        if (chrome.pid && isPidAlive(chrome.pid)) {
+          throw new Error(`Chrome process ${chrome.pid} remained alive after Browser.close`);
+        }
+      })(),
+      20_000,
+      "Chrome did not exit within 20 seconds after Browser.close",
+    );
+    chrome.process?.unref?.();
+    return;
+  } catch (error) {
+    if (logger?.verbose) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger(`Graceful Chrome close failed (${message}); terminating process.`);
     }
   }
   await chrome.kill();
@@ -826,15 +837,96 @@ function isWsl(): boolean {
   return release.toLowerCase().includes("microsoft");
 }
 
-export function preserveChromeProcessLifetime(
+const WINDOWS_BROKER_COMMAND_ENV = "ASK_PRO_WINDOWS_BROKER_COMMAND";
+const WINDOWS_BROKER_CWD_ENV = "ASK_PRO_WINDOWS_BROKER_CWD";
+const WINDOWS_BROKER_SCRIPT = `
+$ErrorActionPreference = 'Stop'
+$commandLine = [Environment]::GetEnvironmentVariable('${WINDOWS_BROKER_COMMAND_ENV}', 'Process')
+if ([string]::IsNullOrWhiteSpace($commandLine)) { throw 'Missing brokered process command line.' }
+$workingDirectory = [Environment]::GetEnvironmentVariable('${WINDOWS_BROKER_CWD_ENV}', 'Process')
+$environment = @(
+  [Environment]::GetEnvironmentVariables('Process').GetEnumerator() |
+    Where-Object { $_.Key -notin @('${WINDOWS_BROKER_COMMAND_ENV}', '${WINDOWS_BROKER_CWD_ENV}') } |
+    ForEach-Object { "$($_.Key)=$($_.Value)" }
+)
+$startup = New-CimInstance -ClassName Win32_ProcessStartup -Property @{
+  EnvironmentVariables = [string[]]$environment
+} -ClientOnly
+$result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+  CommandLine = $commandLine
+  CurrentDirectory = $workingDirectory
+  ProcessStartupInformation = $startup
+}
+if ($result.ReturnValue -ne 0 -or $result.ProcessId -le 0) {
+  throw "Win32_Process.Create failed with return value $($result.ReturnValue)."
+}
+[Console]::Out.Write([string]$result.ProcessId)
+`;
+
+function quoteWindowsCommandLineArgument(value: string): string {
+  let quoted = '"';
+  let backslashes = 0;
+  for (const character of value) {
+    if (character === "\\") {
+      backslashes += 1;
+      continue;
+    }
+    if (character === '"') {
+      quoted += "\\".repeat(backslashes * 2 + 1);
+    } else {
+      quoted += "\\".repeat(backslashes);
+    }
+    quoted += character;
+    backslashes = 0;
+  }
+  return `${quoted}${"\\".repeat(backslashes * 2)}"`;
+}
+
+export function spawnWindowsProcessOutsideJob(
+  command: string,
+  args: readonly string[],
   options: SpawnOptions,
-  platform: NodeJS.Platform = process.platform,
-): SpawnOptions {
-  return platform === "win32" ? { ...options, detached: true, windowsHide: true } : options;
+): ReturnType<typeof spawn> {
+  const commandLine = [command, ...args].map(quoteWindowsCommandLineArgument).join(" ");
+  const cwd =
+    typeof options.cwd === "string"
+      ? options.cwd
+      : options.cwd
+        ? fileURLToPath(options.cwd)
+        : process.cwd();
+  const broker = spawnSync(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", WINDOWS_BROKER_SCRIPT],
+    {
+      encoding: "utf8",
+      env: {
+        ...(options.env ?? process.env),
+        [WINDOWS_BROKER_COMMAND_ENV]: commandLine,
+        [WINDOWS_BROKER_CWD_ENV]: cwd,
+      },
+      timeout: 30_000,
+      windowsHide: true,
+    },
+  );
+  if (broker.error || broker.status !== 0) {
+    throw broker.error ?? new Error(broker.stderr?.trim() || "Windows process broker failed.");
+  }
+  const pid = Number.parseInt(broker.stdout.trim(), 10);
+  if (!Number.isInteger(pid) || pid <= 0) {
+    throw new Error("Windows process broker returned an invalid process id.");
+  }
+
+  return Object.assign(new EventEmitter(), {
+    pid,
+    stdio: [],
+    unref: () => undefined,
+  }) as unknown as ReturnType<typeof spawn>;
 }
 
 const spawnManagedChrome = ((command: string, args: readonly string[], options: SpawnOptions) =>
-  spawn(command, args, preserveChromeProcessLifetime(options))) as typeof spawn;
+  process.platform === "win32"
+    ? spawnWindowsProcessOutsideJob(command, args, options)
+    : spawn(command, args, options)) as typeof spawn;
 
 async function launchManagedChrome({
   chromeFlags,
@@ -890,7 +982,18 @@ async function launchManagedChrome({
     };
   }
 
-  await launcher.launch();
+  try {
+    await launcher.launch();
+  } catch (error) {
+    if (launcher.chromeProcess) {
+      try {
+        launcher.kill();
+      } catch {
+        // Preserve the launch failure.
+      }
+    }
+    throw error;
+  }
 
   const kill = async () => launcher.kill();
   return {
