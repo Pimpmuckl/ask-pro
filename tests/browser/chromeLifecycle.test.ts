@@ -1,10 +1,14 @@
+import { execFileSync } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import {
   buildChromeLaunchFlags,
   buildChromeFlags,
-  preserveChromeProcessLifetime,
   restoreChromeWindowByPid,
   shouldLaunchChromeMinimized,
+  spawnWindowsProcessOutsideJob,
 } from "../../src/browser/chromeLifecycle.js";
 
 describe("chrome lifecycle window restore", () => {
@@ -44,13 +48,52 @@ describe("chrome lifecycle window restore", () => {
 });
 
 describe("chrome lifecycle launch window state", () => {
-  test("keeps managed Chrome independent of its Windows controller process", () => {
-    const windowsOptions = preserveChromeProcessLifetime({ detached: false }, "win32");
-    const linuxOptions = { detached: false };
+  test.runIf(process.platform === "win32")(
+    "launches managed processes outside the Windows controller job",
+    async () => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), "ask pro broker-"));
+      const marker = path.join(dir, "child.json");
+      const expectedArgs = ["plain", "with spaces", 'quote"and\\trailing\\'];
+      const script = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, JSON.stringify({ argv: process.argv.slice(1), cwd: process.cwd(), env: process.env.ASK_PRO_BROKER_TEST, ppid: process.ppid }))`;
+      spawnWindowsProcessOutsideJob(process.execPath, ["-e", script, ...expectedArgs], {
+        cwd: dir,
+        env: { ...process.env, ASK_PRO_BROKER_TEST: "round trip" },
+      });
 
-    expect(windowsOptions).toMatchObject({ detached: true, windowsHide: true });
-    expect(preserveChromeProcessLifetime(linuxOptions, "linux")).toBe(linuxOptions);
-  });
+      try {
+        let payload: { argv: string[]; cwd: string; env: string; ppid: number } | null = null;
+        for (let attempt = 0; attempt < 100 && !payload; attempt += 1) {
+          payload = await readFile(marker, "utf8")
+            .then(
+              (value) =>
+                JSON.parse(value) as { argv: string[]; cwd: string; env: string; ppid: number },
+            )
+            .catch(() => null);
+          if (!payload) await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+
+        expect(payload).not.toBeNull();
+        if (!payload) throw new Error("Brokered child did not write its marker.");
+        expect(payload.argv).toEqual(expectedArgs);
+        expect(payload.cwd).toBe(dir);
+        expect(payload.env).toBe("round trip");
+        const parentName = execFileSync(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            `(Get-Process -Id ${payload.ppid} -ErrorAction SilentlyContinue).Name`,
+          ],
+          { encoding: "utf8", windowsHide: true },
+        ).trim();
+        expect(parentName).toMatch(/^WmiPrvSE$/i);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    15_000,
+  );
 
   test("keeps Chrome CPU protections enabled for long headed waits", () => {
     const flags = buildChromeLaunchFlags(buildChromeFlags(false, undefined, "en-US,en"));
