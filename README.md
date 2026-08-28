@@ -76,9 +76,9 @@ Windows watcher prevents moving or removing it, the verified copy may remain
 at the legacy path while the state path becomes authoritative. ask-pro never
 merges profiles or later deletes a retained legacy copy.
 
-Each new profile may need a human login once. On Windows, fresh runs for an
-auth-ready managed profile start minimized; login, resume/recovery, stale-auth,
-and debug paths stay visible or are restored for human action.
+Each new profile may need a human login once. On Windows, ordinary managed runs
+start minimized; login, resume/recovery, stale-auth, and debug paths stay visible
+or are restored for human action.
 
 ## Quick Use
 

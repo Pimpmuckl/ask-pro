@@ -50,7 +50,7 @@ import { uploadAttachmentViaDataTransfer } from "./actions/remoteFileTransfer.js
 import { ensureThinkingTime } from "./actions/thinkingTime.js";
 import { startThinkingStatusMonitor } from "./actions/thinkingStatus.js";
 import { createPostSubmitInputGuard } from "./actions/inputGuard.js";
-import { setChromeWindowState } from "./actions/windowState.js";
+import { isChromeWindowMinimized, setChromeWindowState } from "./actions/windowState.js";
 import { estimateTokenCount, withRetries, delay } from "./utils.js";
 import { formatElapsed } from "./format.js";
 import { CHATGPT_URL, CONVERSATION_TURN_SELECTOR, DEFAULT_MODEL_STRATEGY } from "./constants.js";
@@ -200,26 +200,9 @@ function listIgnoredRemoteChromeFlags(config: {
   ].filter((value): value is string => Boolean(value));
 }
 
-function shouldParkAuthenticatedChromeWindow(config: {
-  headless?: boolean;
-  hideWindow?: boolean;
-  browserTabRef?: string | null;
-  reusedChrome?: boolean;
-  platform?: NodeJS.Platform;
-}): boolean {
-  return (
-    (config.platform ?? process.platform) === "win32" &&
-    !config.headless &&
-    !config.hideWindow &&
-    !config.browserTabRef &&
-    !config.reusedChrome
-  );
-}
-
 function shouldEnablePostSubmitInputGuard(config: {
   remoteChrome?: ResolvedBrowserConfig["remoteChrome"];
   browserTabRef?: string | null;
-  reusedChrome?: boolean;
 }): boolean {
   return !config.remoteChrome && !config.browserTabRef;
 }
@@ -546,11 +529,12 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     : 0;
   let profileLock: ProfileRunLock | null = null;
   const acquireProfileLockIfNeeded = async (timeoutMs = profileLockTimeoutMs) => {
-    if (timeoutMs <= 0) return;
+    if (timeoutMs <= 0 || profileLock) return false;
     profileLock = await acquireProfileRunLock(userDataDir, {
       timeoutMs,
       logger,
     });
+    return true;
   };
   const releaseProfileLockIfHeld = async () => {
     if (!profileLock) return;
@@ -665,8 +649,11 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
   let stopThinkingMonitor: (() => void) | null = null;
   let removeDialogHandler: (() => void) | null = null;
   let appliedCookies = 0;
+  let windowParkedAfterSetup = false;
+  let windowWasMinimized = false;
   let preserveBrowserOnError = false;
   let preserveBrowserAfterComplete = false;
+  let preserveWindowStateOnError = false;
   let revealAuthenticatedWindow: (reason: string) => Promise<void> = async () => {};
   let disablePostSubmitInputGuard: () => Promise<boolean> = async () => true;
   let stopHumanInterventionMonitor: (() => void) | null = null;
@@ -690,24 +677,108 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         );
       } else {
         const strictTabIsolation = Boolean(manualLogin && reusedChrome);
-        if (shouldCaptureLaunchTargetsForCleanup({ reusedChrome: Boolean(reusedChrome) })) {
-          const initialTargets = await listRemoteChromeTargets({
-            host: chromeHost,
-            port: chrome.port,
-          }).catch(() => []);
-          launchTargetIds = selectDisposableLaunchTargetIds(initialTargets, null);
+        const manageManagedWindowState =
+          manualLogin &&
+          shouldLaunchChromeMinimized({
+            ...config,
+            startMinimized: true,
+          });
+        let windowClient: ChromeClient | null = null;
+        let tabSetupFailed = false;
+        try {
+          if (manageManagedWindowState) {
+            await acquireProfileLockIfNeeded(lifecycleLockTimeoutMs);
+          }
+          windowClient = manageManagedWindowState
+            ? ((await CDP({ host: chromeHost, port: chrome.port }).catch(
+                () => null,
+              )) as ChromeClient | null)
+            : null;
+          const observedWindowMinimized = windowClient
+            ? await isChromeWindowMinimized(windowClient)
+            : null;
+          windowWasMinimized = Boolean(
+            manageManagedWindowState &&
+            (observedWindowMinimized ?? (config.startMinimized ? chromeLaunchMinimized : true)),
+          );
+          if (shouldCaptureLaunchTargetsForCleanup({ reusedChrome: Boolean(reusedChrome) })) {
+            const initialTargets = await listRemoteChromeTargets({
+              host: chromeHost,
+              port: chrome.port,
+            }).catch(() => []);
+            launchTargetIds = selectDisposableLaunchTargetIds(initialTargets, null);
+          }
+          const connection = await connectWithNewTab(
+            chrome.port,
+            logger,
+            "about:blank",
+            chromeHost,
+            {
+              fallbackToDefault: !strictTabIsolation,
+              retries: strictTabIsolation ? 3 : 0,
+              retryDelayMs: 500,
+            },
+          );
+          client = connection.client;
+          isolatedTargetId = connection.targetId ?? null;
+          if (!isolatedTargetId) {
+            launchTargetIds = [];
+          }
+          if (config.startMinimized && windowWasMinimized) {
+            windowParkedAfterSetup = await setChromeWindowState(client, "minimized", logger, {
+              targetId: isolatedTargetId ?? undefined,
+              reason: "concurrent-tab",
+            });
+          } else if (!config.startMinimized && windowWasMinimized) {
+            let restored = await setChromeWindowState(client, "normal", logger, {
+              targetId: isolatedTargetId ?? undefined,
+              reason: "recovery-tab",
+            });
+            if (!restored) restored = await restoreChromeWindowByPid(chrome.pid, logger);
+            windowParkedAfterSetup = !restored;
+            if (restored) windowWasMinimized = false;
+          }
+          ownsTarget = true;
+        } catch (error) {
+          tabSetupFailed = true;
+          throw error;
+        } finally {
+          if (tabSetupFailed && manageManagedWindowState && profileLock) {
+            const restoreClient = client ?? windowClient;
+            let restored = false;
+            if (restoreClient) {
+              restored = await setChromeWindowState(restoreClient, "normal", logger, {
+                targetId: isolatedTargetId ?? undefined,
+                reason: "tab-setup-failed",
+              });
+            }
+            if (!restored) restored = await restoreChromeWindowByPid(chrome.pid, logger);
+            if (restored) windowWasMinimized = false;
+          } else if (config.startMinimized && windowWasMinimized && !windowParkedAfterSetup) {
+            const reparkClient =
+              client ??
+              windowClient ??
+              ((await CDP({ host: chromeHost, port: chrome.port }).catch(
+                () => null,
+              )) as ChromeClient | null);
+            if (reparkClient) {
+              windowParkedAfterSetup = await setChromeWindowState(
+                reparkClient,
+                "minimized",
+                logger,
+                {
+                  targetId: isolatedTargetId ?? undefined,
+                  reason: "tab-setup",
+                },
+              );
+              if (reparkClient !== client && reparkClient !== windowClient) {
+                await reparkClient.close().catch(() => undefined);
+              }
+            }
+          }
+          await windowClient?.close().catch(() => undefined);
+          if (manageManagedWindowState) await releaseProfileLockIfHeld();
         }
-        const connection = await connectWithNewTab(chrome.port, logger, "about:blank", chromeHost, {
-          fallbackToDefault: !strictTabIsolation,
-          retries: strictTabIsolation ? 3 : 0,
-          retryDelayMs: 500,
-        });
-        client = connection.client;
-        isolatedTargetId = connection.targetId ?? null;
-        if (!isolatedTargetId) {
-          launchTargetIds = [];
-        }
-        ownsTarget = true;
       }
     } catch (error) {
       const hint = describeDevtoolsFirewallHint(chromeHost, chrome.port);
@@ -740,32 +811,29 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
       ? createPostSubmitInputGuard(Input, logger)
       : null;
     disablePostSubmitInputGuard = () => postSubmitInputGuard?.disable() ?? Promise.resolve(true);
-    const shouldParkAuthenticatedWindow = shouldParkAuthenticatedChromeWindow({
-      ...config,
-      reusedChrome: Boolean(reusedChrome),
-    });
-    let authenticatedWindowParked = chromeLaunchMinimized;
-    const parkAuthenticatedWindow = async (reason: string): Promise<void> => {
-      if (!shouldParkAuthenticatedWindow || authenticatedWindowParked || !client) return;
-      authenticatedWindowParked = await setChromeWindowState(client, "minimized", logger, {
-        targetId: isolatedTargetId ?? lastTargetId,
-        reason,
-      });
-    };
+    let authenticatedWindowParked =
+      chromeLaunchMinimized || windowParkedAfterSetup || windowWasMinimized;
     revealAuthenticatedWindow = async (reason: string): Promise<void> => {
       if (!authenticatedWindowParked) return;
-      let restored = false;
-      if (client) {
-        restored = await setChromeWindowState(client, "normal", logger, {
-          targetId: isolatedTargetId ?? lastTargetId,
-          reason,
-        });
-      }
-      if (!restored) {
-        restored = await restoreChromeWindowByPid(chrome?.pid, logger);
-      }
-      if (restored) {
-        authenticatedWindowParked = false;
+      const acquiredProfileLock = manualLogin
+        ? await acquireProfileLockIfNeeded(lifecycleLockTimeoutMs)
+        : false;
+      try {
+        let restored = false;
+        if (client) {
+          restored = await setChromeWindowState(client, "normal", logger, {
+            targetId: isolatedTargetId ?? lastTargetId,
+            reason,
+          });
+        }
+        if (!restored) {
+          restored = await restoreChromeWindowByPid(chrome?.pid, logger);
+        }
+        if (restored) {
+          authenticatedWindowParked = false;
+        }
+      } finally {
+        if (acquiredProfileLock) await releaseProfileLockIfHeld();
       }
     };
 
@@ -920,7 +988,6 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
       }
     };
     await captureRuntimeSnapshot().catch(() => undefined);
-    await parkAuthenticatedWindow("composer-ready");
     if (postSubmitInputGuard) {
       const monitor = startHumanInterventionRestoreMonitor({
         Runtime,
@@ -1557,6 +1624,8 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     };
   } catch (error) {
     const normalizedError = error instanceof Error ? error : new Error(String(error));
+    preserveWindowStateOnError =
+      options.shouldPreserveWindowStateOnError?.(normalizedError) ?? false;
     const socketClosed = connectionClosedUnexpectedly || isWebSocketClosureError(normalizedError);
     connectionClosedUnexpectedly = connectionClosedUnexpectedly || socketClosed;
     if (shouldPreserveBrowserOnError(normalizedError, config.headless)) {
@@ -1664,7 +1733,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
           "[browser] Post-submit input guard may still be active; retained browser may require closing and relaunching.",
         );
       }
-      if (keepBrowserOpen) {
+      if (keepBrowserOpen && !preserveWindowStateOnError) {
         await revealAuthenticatedWindow("browser-retained");
       } else if (connectionClosedUnexpectedly) {
         await revealAuthenticatedWindow("connection-lost");
@@ -2793,7 +2862,6 @@ export { resolveBrowserConfig, DEFAULT_BROWSER_CONFIG } from "./config.js";
 // biome-ignore lint/style/useNamingConvention: test-only export used in vitest suite
 export const __test__ = {
   listIgnoredRemoteChromeFlags,
-  shouldParkAuthenticatedChromeWindow,
   shouldEnablePostSubmitInputGuard,
   decideManagedChromeCleanup,
   shouldCaptureLaunchTargetsForCleanup,

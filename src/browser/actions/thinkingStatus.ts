@@ -162,6 +162,7 @@ async function readThinkingStatus(
 
 const SAFE_THINKING_STATUS_MESSAGES = new Set([
   "active",
+  "pro gate active",
   "thinking sidecar active",
   "thinking sidecar opened",
 ]);
@@ -229,6 +230,19 @@ function buildThinkingStatusExpression(): string {
         node.getAttribute?.('title'),
         node.getAttribute?.('data-testid'),
       ].filter(Boolean).join(' '));
+    const visibleControls = Array.from(document.querySelectorAll('button, [role="button"]'))
+      .filter((node) => node instanceof HTMLElement && isVisible(node));
+    const hasControl = (expected) =>
+      visibleControls.some((node) =>
+        [node.textContent, node.getAttribute?.('aria-label'), node.getAttribute?.('title')]
+          .some((label) => normalize(label) === expected),
+      );
+    if (hasControl('answer now') && hasControl('stop answering')) {
+      return {
+        message: 'pro gate active',
+        source: 'inline',
+      };
+    }
     const looksLikeThinking = (node) => {
       const label = labelFor(node);
       return (

@@ -144,30 +144,6 @@ describe("recovery command hints", () => {
   });
 });
 
-describe("authenticated Chrome window parking", () => {
-  test("does not park explicit hidden-window runs", () => {
-    expect(__test__.shouldParkAuthenticatedChromeWindow({ hideWindow: true })).toBe(false);
-  });
-
-  test("does not park explicit existing-tab runs", () => {
-    expect(__test__.shouldParkAuthenticatedChromeWindow({ browserTabRef: "current" })).toBe(false);
-  });
-
-  test("does not park reused retained Chrome runs", () => {
-    expect(
-      __test__.shouldParkAuthenticatedChromeWindow({ reusedChrome: true, platform: "win32" }),
-    ).toBe(false);
-  });
-
-  test("does not park non-Windows Chrome runs", () => {
-    expect(__test__.shouldParkAuthenticatedChromeWindow({ platform: "linux" })).toBe(false);
-  });
-
-  test("parks ordinary headed managed Chrome runs", () => {
-    expect(__test__.shouldParkAuthenticatedChromeWindow({ platform: "win32" })).toBe(true);
-  });
-});
-
 describe("post-submit input guard scope", () => {
   test("uses the guard for managed local Chrome", () => {
     expect(__test__.shouldEnablePostSubmitInputGuard({})).toBe(true);
@@ -183,10 +159,6 @@ describe("post-submit input guard scope", () => {
 
   test("skips the guard for user-managed local tabs", () => {
     expect(__test__.shouldEnablePostSubmitInputGuard({ browserTabRef: "current" })).toBe(false);
-  });
-
-  test("uses the guard for reused retained managed Chrome", () => {
-    expect(__test__.shouldEnablePostSubmitInputGuard({ reusedChrome: true })).toBe(true);
   });
 });
 

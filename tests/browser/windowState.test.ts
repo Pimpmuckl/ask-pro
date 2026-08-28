@@ -1,7 +1,32 @@
 import { describe, expect, test, vi } from "vitest";
-import { setChromeWindowState } from "../../src/browser/actions/windowState.js";
+import {
+  isChromeWindowMinimized,
+  setChromeWindowState,
+} from "../../src/browser/actions/windowState.js";
 
 describe("Chrome window state actions", () => {
+  test("reads the current target window's minimized state", async () => {
+    const getWindowForTarget = vi
+      .fn()
+      .mockResolvedValueOnce({ windowId: 42, bounds: { windowState: "minimized" } })
+      .mockResolvedValueOnce({ windowId: 42, bounds: { windowState: "normal" } });
+    const getTargetInfo = vi.fn().mockResolvedValue({ targetInfo: { targetId: "current-target" } });
+
+    await expect(
+      isChromeWindowMinimized({
+        Browser: { getWindowForTarget },
+        Target: { getTargetInfo },
+      } as never),
+    ).resolves.toBe(true);
+    await expect(
+      isChromeWindowMinimized({
+        Browser: { getWindowForTarget },
+        Target: { getTargetInfo },
+      } as never),
+    ).resolves.toBe(false);
+    expect(getWindowForTarget).toHaveBeenCalledWith({ targetId: "current-target" });
+  });
+
   test("minimizes the current target window", async () => {
     const getWindowForTarget = vi.fn().mockResolvedValue({ windowId: 42 });
     const setWindowBounds = vi.fn().mockResolvedValue(undefined);
@@ -11,7 +36,7 @@ describe("Chrome window state actions", () => {
       { Browser: { getWindowForTarget, setWindowBounds } } as never,
       "minimized",
       logger,
-      { targetId: "target-1", reason: "composer-ready" },
+      { targetId: "target-1", reason: "concurrent-tab" },
     );
 
     expect(result).toBe(true);
@@ -21,7 +46,7 @@ describe("Chrome window state actions", () => {
       bounds: { windowState: "minimized" },
     });
     expect(logger).toHaveBeenCalledWith(
-      "[browser] Chrome window parked (minimized) (composer-ready)",
+      "[browser] Chrome window parked (minimized) (concurrent-tab)",
     );
   });
 

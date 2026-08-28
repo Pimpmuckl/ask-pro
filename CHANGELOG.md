@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- Keep reused managed Chrome minimized during concurrent unattended runs while
+  preserving human-controlled auth recovery and user-owned browser windows.
+- Start ordinary managed Chrome minimized from the first launch and restore it
+  only when human login, recovery, or debugging needs a visible window.
+- Report ChatGPT's visible `Answer now` plus `Stop answering` placeholder as
+  active Pro thinking without clicking either control.
 - Launch shared managed Chrome outside its Windows controller job so it survives
   launcher exit, and prefer Chrome's native graceful shutdown before the
   force-termination fallback.
