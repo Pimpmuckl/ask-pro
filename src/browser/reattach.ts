@@ -30,12 +30,15 @@ import {
   closeTab,
   maybeReuseRunningChrome,
   releaseChromeProcessHandle,
+  restoreChromeWindowByPid,
+  shouldLaunchChromeMinimized,
 } from "./chromeLifecycle.js";
 import { DEFAULT_BROWSER_CONFIG, resolveBrowserConfig } from "./config.js";
 import { defaultAskProBrowserProfileDir } from "./profilePaths.js";
 import { applyPageLanguageOverrides, seedChromeProfileLanguage } from "./language.js";
 import { syncCookies } from "./cookies.js";
 import { CHATGPT_URL } from "./constants.js";
+import { isChromeWindowMinimized, setChromeWindowState } from "./actions/windowState.js";
 import type { ManagedChromeRunLease } from "./profileState.js";
 import {
   acquireProfileRunLock,
@@ -264,6 +267,27 @@ export async function resumeBrowserSession(
       connectedTargetId === liveRuntime.chromeTargetId,
     );
     const client: ChromeClient = connection.client;
+    const windowTransitionLock =
+      directUserDataDir && shouldLaunchChromeMinimized({ ...resolvedConfig, startMinimized: true })
+        ? await acquireProfileRunLock(directUserDataDir, {
+            timeoutMs: lifecycleLockTimeout(resolvedConfig.profileLockTimeoutMs),
+            logger,
+          })
+        : null;
+    try {
+      if (windowTransitionLock) {
+        const windowIsMinimized = await isChromeWindowMinimized(client);
+        if (windowIsMinimized !== false) {
+          const restored = await setChromeWindowState(client, "normal", logger, {
+            targetId: connectedTargetId,
+            reason: "resume",
+          });
+          if (!restored) await restoreChromeWindowByPid(liveRuntime.chromePid, logger);
+        }
+      }
+    } finally {
+      await windowTransitionLock?.release();
+    }
     const { Runtime, DOM, Page, Input } = client;
     if (Runtime?.enable) {
       await Runtime.enable();
@@ -511,14 +535,57 @@ async function resumeBrowserSessionViaNewChrome(
   let completed = false;
   let keepBrowserOpen = false;
   try {
-    const isolatedConnection = manualLogin
-      ? await connectWithNewTab(chrome.port, logger, "about:blank", chromeHost, {
-          fallbackToDefault: false,
-          retries: 2,
+    const manageManagedWindowState =
+      manualLogin && shouldLaunchChromeMinimized({ ...resolved, startMinimized: true });
+    const windowTransitionLock = manageManagedWindowState
+      ? await acquireProfileRunLock(userDataDir, {
+          timeoutMs: lifecycleLockTimeout(resolved.profileLockTimeoutMs),
+          logger,
         })
-      : { client: await connectToChrome(chrome.port, logger, chromeHost) };
-    client = isolatedConnection.client;
-    isolatedTargetId = isolatedConnection.targetId;
+      : null;
+    let tabSetupFailed = false;
+    try {
+      const isolatedConnection = manualLogin
+        ? await connectWithNewTab(chrome.port, logger, "about:blank", chromeHost, {
+            fallbackToDefault: false,
+            retries: 2,
+          })
+        : { client: await connectToChrome(chrome.port, logger, chromeHost) };
+      client = isolatedConnection.client;
+      isolatedTargetId = isolatedConnection.targetId;
+      if (manageManagedWindowState) {
+        const windowIsMinimized = await isChromeWindowMinimized(client);
+        if (windowIsMinimized !== false) {
+          const restored = await setChromeWindowState(client, "normal", logger, {
+            targetId: isolatedTargetId,
+            reason: "resume-relaunch",
+          });
+          if (!restored) await restoreChromeWindowByPid(chrome.pid, logger);
+        }
+      }
+    } catch (error) {
+      tabSetupFailed = true;
+      throw error;
+    } finally {
+      if (tabSetupFailed && windowTransitionLock) {
+        const restoreClient =
+          client ??
+          ((await CDP({ host: chromeHost, port: chrome.port }).catch(
+            () => null,
+          )) as ChromeClient | null);
+        let restored = false;
+        if (restoreClient) {
+          restored = await setChromeWindowState(restoreClient, "normal", logger, {
+            targetId: isolatedTargetId,
+            reason: "resume-tab-setup-failed",
+          });
+          if (restoreClient !== client) await restoreClient.close().catch(() => undefined);
+        }
+        if (!restored) await restoreChromeWindowByPid(chrome.pid, logger);
+      }
+      await windowTransitionLock?.release();
+    }
+    if (!client) throw new Error("Failed to connect to managed Chrome.");
     const { Network, Page, Runtime, DOM } = client;
 
     if (Runtime?.enable) {

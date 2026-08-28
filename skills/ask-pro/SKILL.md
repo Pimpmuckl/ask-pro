@@ -67,10 +67,9 @@ prefer `--no-temporary` from the start. Add `--temporary` only when Temporary
 Chat is required and falling back would be wrong. Temporary Chat is less
 recoverable after browser/tab loss.
 
-On Windows, fresh runs for a managed Chrome profile start minimized after
-ask-pro has recorded that profile as auth-ready from a completed run. First
-login, resume/recovery, and stale-auth paths stay visible or are restored for
-human action. Local managed Chrome guards browser input while Pro is answering.
+On Windows, ordinary managed Chrome runs start minimized. First login,
+resume/recovery, and stale-auth paths stay visible or are restored for human
+action. Local managed Chrome guards browser input while Pro is answering.
 If login, MFA, a browser challenge, or incomplete-answer debugging needs human
 attention, ask-pro should restore or retain the browser and emit the next
 action.

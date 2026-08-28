@@ -1,12 +1,28 @@
 import type { BrowserLogger, ChromeClient } from "../types.js";
 
 type BrowserWindowController = {
-  getWindowForTarget?: (params?: { targetId?: string }) => Promise<{ windowId?: number }>;
+  getWindowForTarget?: (params?: { targetId?: string }) => Promise<{
+    windowId?: number;
+    bounds?: { windowState?: string };
+  }>;
   setWindowBounds?: (params: {
     windowId: number;
     bounds: { windowState: "normal" | "minimized" };
   }) => Promise<unknown>;
 };
+
+export async function isChromeWindowMinimized(client: ChromeClient): Promise<boolean | null> {
+  const browser = client.Browser as BrowserWindowController | undefined;
+  if (typeof browser?.getWindowForTarget !== "function") return null;
+
+  try {
+    const targetId = await readCurrentTargetId(client);
+    const { bounds } = await browser.getWindowForTarget(targetId ? { targetId } : undefined);
+    return typeof bounds?.windowState === "string" ? bounds.windowState === "minimized" : null;
+  } catch {
+    return null;
+  }
+}
 
 export async function setChromeWindowState(
   client: ChromeClient,

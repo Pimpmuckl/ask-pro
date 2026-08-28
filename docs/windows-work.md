@@ -35,10 +35,14 @@ Read this when working on `ask_pro` from Windows and add new findings here.
 - The GPT-5.6 ChatGPT picker exposes `GPT-5.6 Sol` under Advanced > Model and a
   five-step reasoning-effort slider with `Pro` at the maximum. ask-pro selects
   or confirms both before submission.
-- Fresh managed Chrome runs start minimized only after `ask-pro` has recorded
-  that profile as auth-ready from a completed run. First login, resume/recovery,
-  stale auth, challenges, and retained debug sessions should stay visible or
-  restore the browser for human-controlled recovery.
+- Ordinary managed Chrome runs start minimized. First login, resume/recovery,
+  stale auth, challenges, and retained debug sessions restore the browser for
+  human-controlled recovery. Concurrent unattended runs preserve an already
+  minimized shared window when opening their isolated tab; recovery runs
+  serialize the same transition and leave it visible. Remote Chrome and explicit
+  existing-tab runs are never parked.
+- A visible `Answer now` and `Stop answering` control pair is the active Pro
+  thinking gate. Report it as active status, but never click either control.
 - The old Oracle API, MCP, Gemini, TUI, bridge, and remote-service paths are not
   V1 requirements in this fork.
 

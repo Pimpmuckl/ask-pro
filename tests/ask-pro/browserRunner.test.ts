@@ -306,49 +306,14 @@ describe("ask-pro browser runner", () => {
     });
   });
 
-  test("does not start minimized before a profile has completed an authenticated run", async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-auth-marker-first-"));
+  test("starts ordinary managed runs minimized", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-minimized-"));
     tempDirs.push(cwd);
-    const browserProfile = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-profile-first-"));
+    const browserProfile = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-profile-minimized-"));
     tempDirs.push(browserProfile);
     const session = await createAskProSession({
       cwd,
-      question: "Review before marker.",
-      filePatterns: [],
-      dryRun: false,
-    });
-
-    await runAskProBrowserSession({
-      cwd,
-      sessionId: session.id,
-      browserProfileDir: browserProfile,
-    });
-
-    const firstCall = runBrowserModeMock.mock.calls[0] as unknown[] | undefined;
-    expect(firstCall?.[0]).toMatchObject({
-      config: {
-        manualLoginProfileDir: browserProfile,
-        startMinimized: false,
-      },
-    });
-    await expect(
-      fs.stat(path.join(browserProfile, "ask-pro-auth-ready.json")),
-    ).resolves.toBeTruthy();
-  });
-
-  test("starts minimized after a profile has completed an authenticated run", async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-auth-marker-ready-"));
-    tempDirs.push(cwd);
-    const browserProfile = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-profile-ready-"));
-    tempDirs.push(browserProfile);
-    await fs.writeFile(
-      path.join(browserProfile, "ask-pro-auth-ready.json"),
-      JSON.stringify({ authenticated: true }),
-      "utf8",
-    );
-    const session = await createAskProSession({
-      cwd,
-      question: "Review after marker.",
+      question: "Review minimized launch.",
       filePatterns: [],
       dryRun: false,
     });
@@ -366,66 +331,6 @@ describe("ask-pro browser runner", () => {
         startMinimized: true,
       },
     });
-  });
-
-  test("does not mark a profile auth-ready for incomplete answers", async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-auth-marker-incomplete-"));
-    tempDirs.push(cwd);
-    const browserProfile = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-profile-incomplete-"));
-    tempDirs.push(browserProfile);
-    const session = await createAskProSession({
-      cwd,
-      question: "Give the actual answer.",
-      filePatterns: [],
-      dryRun: false,
-    });
-    runBrowserModeMock.mockResolvedValueOnce({
-      answerText: "I'll inspect the bundle and create the files.",
-      answerMarkdown: "I'll inspect the bundle and create the files.",
-      browserTransport: "launched",
-    });
-
-    await runAskProBrowserSession({
-      cwd,
-      sessionId: session.id,
-      browserProfileDir: browserProfile,
-    });
-
-    await expect(fs.stat(path.join(browserProfile, "ask-pro-auth-ready.json"))).rejects.toThrow();
-  });
-
-  test("does not fail completed sessions when auth-ready marker persistence fails", async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-run-auth-marker-write-fail-"));
-    tempDirs.push(cwd);
-    const browserProfile = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-profile-write-fail-"));
-    tempDirs.push(browserProfile);
-    const session = await createAskProSession({
-      cwd,
-      question: "Review after marker write failure.",
-      filePatterns: [],
-      dryRun: false,
-    });
-    const originalWriteFile = fs.writeFile.bind(fs);
-    const markerFailureSpy = vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
-      const target = String(args[0]);
-      if (target.endsWith("ask-pro-auth-ready.json")) {
-        throw new Error("marker write failed");
-      }
-      return originalWriteFile(...args);
-    });
-
-    try {
-      await runAskProBrowserSession({
-        cwd,
-        sessionId: session.id,
-        browserProfileDir: browserProfile,
-      });
-    } finally {
-      markerFailureSpy.mockRestore();
-    }
-
-    const { status } = await readAskProStatus({ cwd, sessionId: session.id });
-    expect(status.status).toBe("COMPLETED");
   });
 
   test("marks preamble-only answers incomplete when no response zip exists", async () => {
@@ -705,6 +610,14 @@ describe("ask-pro browser runner", () => {
         url: "https://chatgpt.com/?temporary-chat=true",
       },
     });
+    const shouldPreserveWindowStateOnError = (
+      firstCall?.[0] as { shouldPreserveWindowStateOnError?: (error: Error) => boolean } | undefined
+    )?.shouldPreserveWindowStateOnError;
+    expect(
+      shouldPreserveWindowStateOnError?.(
+        new Error('Unable to find model option matching "GPT-5.6 Sol" in the model switcher.'),
+      ),
+    ).toBe(false);
     const metadata = JSON.parse(
       await fs.readFile(path.join(session.dir, "browser.json"), "utf8"),
     ) as { url?: string };
@@ -740,6 +653,15 @@ describe("ask-pro browser runner", () => {
         url: "https://chatgpt.com/?temporary-chat=true",
       },
     });
+    const shouldPreserveWindowStateOnError = (
+      firstCall?.[0] as { shouldPreserveWindowStateOnError?: (error: Error) => boolean } | undefined
+    )?.shouldPreserveWindowStateOnError;
+    expect(
+      shouldPreserveWindowStateOnError?.(
+        new Error('Unable to find model option matching "GPT-5.6 Sol" in the model switcher.'),
+      ),
+    ).toBe(true);
+    expect(shouldPreserveWindowStateOnError?.(new Error("attachment upload failed"))).toBe(false);
     expect(secondCall?.[0]).toMatchObject({
       config: {
         url: "https://chatgpt.com/",
@@ -1084,6 +1006,7 @@ describe("ask-pro browser runner", () => {
     expect(secondCall?.[0]).toMatchObject({
       config: {
         url: "https://chatgpt.com/",
+        startMinimized: false,
       },
     });
   });
@@ -1229,13 +1152,13 @@ describe("ask-pro browser runner", () => {
     expect(resumeBrowserSessionMock).not.toHaveBeenCalled();
   });
 
-  test("reattach relaunch stays visible even for auth-ready profiles", async () => {
-    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-auth-marker-"));
+  test("reattach relaunch stays visible", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "ask-pro-reattach-visible-"));
     tempDirs.push(cwd);
     const profileDir = testSharedProfileDir();
     const session = await createAskProSession({
       cwd,
-      question: "Review the saved browser session with an auth-ready profile.",
+      question: "Review the saved browser session.",
       filePatterns: [],
       dryRun: false,
     });
