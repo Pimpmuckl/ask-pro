@@ -10,7 +10,10 @@ import CDP from "chrome-remote-interface";
 import { Launcher, type LaunchedChrome } from "chrome-launcher";
 import type { BrowserLogger, ResolvedBrowserConfig, ChromeClient } from "./types.js";
 import {
+  clearChromeLaunchStarting,
   cleanupStaleProfileState,
+  hasChromeLaunchStarting,
+  markChromeLaunchStarting,
   readChromePid,
   readDevToolsPort,
   verifyDevToolsReachable,
@@ -26,6 +29,7 @@ const CPU_THROTTLING_OVERRIDE_FLAGS = new Set([
   "--disable-background-timer-throttling",
   "--disable-ipc-flooding-protection",
 ]);
+const CHROME_STARTUP_HANDOFF_MS = 26_000;
 
 export async function launchChrome(
   config: ResolvedBrowserConfig,
@@ -40,39 +44,50 @@ export async function launchChrome(
       startMinimized: shouldLaunchChromeMinimized(config),
     }),
   );
-  const launcher = await launchManagedChrome({
-    chromeFlags,
-    chromePath: config.chromePath ?? undefined,
-    userDataDir,
-    host: connectHost,
-    requestedPort: debugPort ?? undefined,
-  });
-  const pidLabel = typeof launcher.pid === "number" ? ` (pid ${launcher.pid})` : "";
-  const hostLabel = connectHost ? ` on ${connectHost}` : "";
-  logger(`Launched Chrome${pidLabel} on port ${launcher.port}${hostLabel}`);
-  return Object.assign(launcher, { host: connectHost ?? "127.0.0.1" }) as LaunchedChrome & {
-    host?: string;
-  };
+  await markChromeLaunchStarting(userDataDir);
+  try {
+    const launcher = await launchManagedChrome({
+      chromeFlags,
+      chromePath: config.chromePath ?? undefined,
+      userDataDir,
+      host: connectHost,
+      requestedPort: debugPort ?? undefined,
+    });
+    const pidLabel = typeof launcher.pid === "number" ? ` (pid ${launcher.pid})` : "";
+    const hostLabel = connectHost ? ` on ${connectHost}` : "";
+    logger(`Launched Chrome${pidLabel} on port ${launcher.port}${hostLabel}`);
+    return Object.assign(launcher, { host: connectHost ?? "127.0.0.1" }) as LaunchedChrome & {
+      host?: string;
+    };
+  } finally {
+    await clearChromeLaunchStarting(userDataDir);
+  }
 }
 
 export async function maybeReuseRunningChrome(
   userDataDir: string,
   logger: BrowserLogger,
-  options: { waitForPortMs?: number; probe?: typeof verifyDevToolsReachable } = {},
 ): Promise<LaunchedChrome | null> {
-  const waitForPortMs = Math.max(0, options.waitForPortMs ?? 0);
   let port = await readDevToolsPort(userDataDir);
-  if (!port && waitForPortMs > 0) {
-    const deadline = Date.now() + waitForPortMs;
-    logger(`Waiting up to ${formatElapsed(waitForPortMs)} for shared Chrome to appear...`);
-    while (!port && Date.now() < deadline) {
-      await delay(250);
-      port = await readDevToolsPort(userDataDir);
+  if (!port) {
+    const startupHandoff = await hasChromeLaunchStarting(userDataDir);
+    if (startupHandoff) {
+      const deadline = Date.now() + CHROME_STARTUP_HANDOFF_MS;
+      logger(
+        `Waiting up to ${formatElapsed(CHROME_STARTUP_HANDOFF_MS)} for brokered Chrome startup handoff...`,
+      );
+      while (!port && Date.now() < deadline) {
+        await delay(100);
+        port = await readDevToolsPort(userDataDir);
+      }
     }
+    if (startupHandoff) await clearChromeLaunchStarting(userDataDir);
   }
   if (!port) return null;
 
-  const probe = await (options.probe ?? verifyDevToolsReachable)({ port });
+  await clearChromeLaunchStarting(userDataDir);
+
+  const probe = await verifyDevToolsReachable({ port });
   if (!probe.ok) {
     logger(
       `DevToolsActivePort found for ${userDataDir} but unreachable (${probe.error}); launching new Chrome.`,
@@ -851,6 +866,7 @@ $environment = @(
 )
 $startup = New-CimInstance -ClassName Win32_ProcessStartup -Property @{
   EnvironmentVariables = [string[]]$environment
+  PriorityClass = [uint32][System.Diagnostics.ProcessPriorityClass]::BelowNormal
 } -ClientOnly
 $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
   CommandLine = $commandLine

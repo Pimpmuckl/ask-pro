@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Launch managed Chrome immediately on the normal exclusive-lock path and at
+  below-normal Windows priority, while retaining a bounded handoff only when a
+  brokered Chrome outlives its startup controller.
 - Keep reused managed Chrome minimized during concurrent unattended runs while
   preserving human-controlled auth recovery and user-owned browser windows.
 - Start ordinary managed Chrome minimized from the first launch and restore it

@@ -28,8 +28,12 @@ Read this when working on `ask_pro` from Windows and add new findings here.
   Managed Chrome is launched through the Windows process service so this lease
   transfer survives the original controller job exiting. A detached direct
   child still belongs to the Codex command job and is terminated with it. The
-  last lease requests Chrome's native graceful shutdown, waits up to 20 seconds,
-  and force-terminates the process only if Chrome does not exit.
+  broker launches managed Chrome at below-normal priority so its cold start
+  does not compete with interactive desktop work. The exclusive profile-lock
+  owner launches immediately. Only a recent startup marker left by a controller
+  that exited after brokering Chrome triggers the remaining bounded handoff
+  wait. The last lease requests Chrome's native graceful shutdown, waits up to
+  20 seconds, and force-terminates the process only if Chrome does not exit.
 - Mutable session metadata retries transient Windows `EPERM` and `EBUSY`
   replacement failures before reporting an error.
 - The GPT-5.6 ChatGPT picker exposes `GPT-5.6 Sol` under Advanced > Model and a

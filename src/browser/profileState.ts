@@ -14,6 +14,7 @@ const DEVTOOLS_ACTIVE_PORT_RELATIVE_PATHS = [
 ] as const;
 
 const CHROME_PID_FILENAME = "chrome.pid";
+const CHROME_STARTING_FILENAME = "chrome-starting";
 const ASK_PRO_PROFILE_LOCK_FILENAME = "ask-pro-automation.lock";
 const ASK_PRO_RUN_LEASE_DIRNAME = "ask-pro-browser-runs";
 
@@ -74,6 +75,27 @@ export async function writeChromePid(userDataDir: string, pid: number): Promise<
   } catch {
     // best effort
   }
+}
+
+export async function markChromeLaunchStarting(userDataDir: string): Promise<void> {
+  const markerPath = path.join(userDataDir, CHROME_STARTING_FILENAME);
+  await mkdir(path.dirname(markerPath), { recursive: true });
+  await writeFile(markerPath, "", "utf8");
+}
+
+export async function hasChromeLaunchStarting(userDataDir: string): Promise<boolean> {
+  try {
+    await stat(path.join(userDataDir, CHROME_STARTING_FILENAME));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function clearChromeLaunchStarting(userDataDir: string): Promise<void> {
+  await rm(path.join(userDataDir, CHROME_STARTING_FILENAME), { force: true }).catch(
+    () => undefined,
+  );
 }
 
 export function isProcessAlive(pid: number): boolean {

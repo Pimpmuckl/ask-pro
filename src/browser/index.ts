@@ -66,7 +66,6 @@ import {
   createManagedChromeRunLease,
   releaseManagedChromeRunLeaseAndCountPeers,
   shouldCleanupManualLoginProfileState,
-  verifyDevToolsReachable,
   writeChromePid,
   writeDevToolsActivePort,
 } from "./profileState.js";
@@ -549,24 +548,20 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
   let reusedChrome: LaunchedChrome | null = null;
   let chrome: LaunchedChrome | null = null;
   try {
-    reusedChrome = manualLogin
-      ? await maybeReuseRunningChrome(userDataDir, logger, {
-          waitForPortMs: config.reuseChromeWaitMs,
-        })
-      : null;
+    reusedChrome = manualLogin ? await maybeReuseRunningChrome(userDataDir, logger) : null;
+    if (!reusedChrome) {
+      await seedChromeProfileLanguage(userDataDir, config.acceptLanguage, logger);
+    }
     chrome =
       reusedChrome ??
-      (await (async () => {
-        await seedChromeProfileLanguage(userDataDir, config.acceptLanguage, logger);
-        return launchChrome(
-          {
-            ...config,
-            remoteChrome: config.remoteChrome,
-          },
-          userDataDir,
-          logger,
-        );
-      })());
+      (await launchChrome(
+        {
+          ...config,
+          remoteChrome: config.remoteChrome,
+        },
+        userDataDir,
+        logger,
+      ));
     // Persist profile state so future manual-login runs can reuse this Chrome.
     if (manualLogin && chrome.port) {
       await writeDevToolsActivePort(userDataDir, chrome.port);
@@ -2885,14 +2880,6 @@ export {
   uploadAttachmentFile,
   waitForAttachmentCompletion,
 } from "./pageActions.js";
-
-export async function maybeReuseRunningChromeForTest(
-  userDataDir: string,
-  logger: BrowserLogger,
-  options: { waitForPortMs?: number; probe?: typeof verifyDevToolsReachable } = {},
-): Promise<LaunchedChrome | null> {
-  return maybeReuseRunningChrome(userDataDir, logger, options);
-}
 
 export function isWebSocketClosureError(error: Error): boolean {
   const message = error.message.toLowerCase();
