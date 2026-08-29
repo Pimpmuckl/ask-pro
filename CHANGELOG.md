@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- Require a visible active login or challenge surface before restoring managed
+  Chrome, without treating queued prompt text or benign challenge class names
+  as browser challenges.
 - Launch managed Chrome immediately on the normal exclusive-lock path and at
   below-normal Windows priority, while retaining a bounded handoff only when a
   brokered Chrome outlives its startup controller.
