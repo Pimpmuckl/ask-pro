@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Hide ordinary managed Chrome windows from the Windows desktop after isolated
+  tab setup, and restore them only for human login, challenge, or recovery.
 - Require a visible active login or challenge surface before restoring managed
   Chrome, without treating queued prompt text or benign challenge class names
   as browser challenges.

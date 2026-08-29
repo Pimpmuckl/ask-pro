@@ -274,14 +274,23 @@ function isPidAlive(pid: number): boolean {
 export async function hideChromeWindow(
   chrome: LaunchedChrome,
   logger: BrowserLogger,
-): Promise<void> {
-  if (process.platform !== "darwin") {
-    logger("Window hiding is only supported on macOS");
-    return;
-  }
+  deps: {
+    platform?: NodeJS.Platform;
+    execFileAsync?: typeof execFileAsync;
+  } = {},
+): Promise<boolean> {
+  const platform = deps.platform ?? process.platform;
+  const runExecFile = deps.execFileAsync ?? execFileAsync;
   if (!chrome.pid) {
     logger("Unable to hide window: missing Chrome PID");
-    return;
+    return false;
+  }
+  if (platform === "win32") {
+    return setWindowsChromeWindowVisibility(chrome.pid, 0, "hidden", logger, runExecFile);
+  }
+  if (platform !== "darwin") {
+    logger("Window hiding is only supported on macOS and Windows");
+    return false;
   }
   const script = `tell application "System Events"
     try
@@ -289,11 +298,88 @@ export async function hideChromeWindow(
     end try
   end tell`;
   try {
-    await execFileAsync("osascript", ["-e", script]);
+    await runExecFile("osascript", ["-e", script]);
     logger("Chrome window hidden (Cmd-H)");
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger(`Failed to hide Chrome window: ${message}`);
+    return false;
+  }
+}
+
+async function setWindowsChromeWindowVisibility(
+  pid: number,
+  command: 0 | 9,
+  state: "hidden" | "restored",
+  logger: BrowserLogger,
+  runExecFile: typeof execFileAsync,
+): Promise<boolean> {
+  const script = `
+$ErrorActionPreference = 'Stop'
+Add-Type @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class AskProWindowVisibility {
+  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("user32.dll")] public static extern int GetClassName(IntPtr hWnd, StringBuilder value, int count);
+  [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr GetProp(IntPtr hWnd, string name);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool SetProp(IntPtr hWnd, string name, IntPtr value);
+  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+}
+"@
+$targetPid = [uint32]${pid}
+$changed = $false
+$preserved = $false
+$callback = [AskProWindowVisibility+EnumWindowsProc]{
+  param([IntPtr]$hWnd, [IntPtr]$lParam)
+  $windowPid = [uint32]0
+  [void][AskProWindowVisibility]::GetWindowThreadProcessId($hWnd, [ref]$windowPid)
+  if ($windowPid -eq $targetPid -and [AskProWindowVisibility]::GetWindowTextLength($hWnd) -gt 0) {
+    $className = New-Object Text.StringBuilder 256
+    [void][AskProWindowVisibility]::GetClassName($hWnd, $className, $className.Capacity)
+    if ($className.ToString() -eq 'Chrome_WidgetWin_1') {
+      if (${command} -eq 0 -and [AskProWindowVisibility]::GetProp($hWnd, 'AskProHumanRecovery') -ne [IntPtr]::Zero) {
+        $script:preserved = $true
+      } else {
+        if (${command} -eq 9) {
+          [void][AskProWindowVisibility]::SetProp($hWnd, 'AskProHumanRecovery', [IntPtr]1)
+        }
+        [void][AskProWindowVisibility]::ShowWindowAsync($hWnd, ${command})
+        $script:changed = $true
+      }
+    }
+  }
+  return $true
+}
+[void][AskProWindowVisibility]::EnumWindows($callback, [IntPtr]::Zero)
+if ($changed) { [Console]::Out.Write('changed') }
+elseif ($preserved) { [Console]::Out.Write('preserved') }
+else { exit 2 }
+`;
+  try {
+    const { stdout } = await runExecFile(
+      "powershell.exe",
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+      {
+        windowsHide: true,
+        timeout: 5000,
+      },
+    );
+    if (String(stdout).trim() === "preserved") {
+      logger("[browser] Chrome window remains visible for human recovery");
+      return false;
+    }
+    logger(`[browser] Chrome window ${state} by pid`);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger(`[browser] Failed to set Chrome window ${state} by pid: ${message}`);
+    return false;
   }
 }
 
@@ -310,50 +396,7 @@ export async function restoreChromeWindowByPid(
   if (platform !== "win32" || !pid) {
     return false;
   }
-  const script = `
-$ErrorActionPreference = 'Stop'
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class AskProWindowRestore {
-  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
-}
-"@
-$targetPid = [uint32]${pid}
-$restored = $false
-$callback = [AskProWindowRestore+EnumWindowsProc]{
-  param([IntPtr]$hWnd, [IntPtr]$lParam)
-  $windowPid = [uint32]0
-  [void][AskProWindowRestore]::GetWindowThreadProcessId($hWnd, [ref]$windowPid)
-  if ($windowPid -eq $targetPid -and [AskProWindowRestore]::IsWindowVisible($hWnd)) {
-    [void][AskProWindowRestore]::ShowWindowAsync($hWnd, 9)
-    $script:restored = $true
-  }
-  return $true
-}
-[void][AskProWindowRestore]::EnumWindows($callback, [IntPtr]::Zero)
-if (-not $restored) { exit 2 }
-`;
-  try {
-    await runExecFile(
-      "powershell.exe",
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-      {
-        windowsHide: true,
-        timeout: 5000,
-      },
-    );
-    logger("[browser] Chrome window restored by pid fallback");
-    return true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger(`[browser] Failed to restore Chrome window by pid fallback: ${message}`);
-    return false;
-  }
+  return setWindowsChromeWindowVisibility(pid, 9, "restored", logger, runExecFile);
 }
 
 export async function connectToChrome(

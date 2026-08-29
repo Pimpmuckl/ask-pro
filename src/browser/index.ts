@@ -721,17 +721,16 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
           if (!isolatedTargetId) {
             launchTargetIds = [];
           }
-          if (config.startMinimized && windowWasMinimized) {
-            windowParkedAfterSetup = await setChromeWindowState(client, "minimized", logger, {
-              targetId: isolatedTargetId ?? undefined,
-              reason: "concurrent-tab",
-            });
-          } else if (!config.startMinimized && windowWasMinimized) {
-            let restored = await setChromeWindowState(client, "normal", logger, {
-              targetId: isolatedTargetId ?? undefined,
-              reason: "recovery-tab",
-            });
-            if (!restored) restored = await restoreChromeWindowByPid(chrome.pid, logger);
+          if (config.startMinimized && manageManagedWindowState) {
+            windowParkedAfterSetup = await hideChromeWindow(chrome, logger);
+          } else if (!config.startMinimized && manageManagedWindowState) {
+            let restored = await restoreChromeWindowByPid(chrome.pid, logger);
+            if (!restored) {
+              restored = await setChromeWindowState(client, "normal", logger, {
+                targetId: isolatedTargetId ?? undefined,
+                reason: "recovery-tab",
+              });
+            }
             windowParkedAfterSetup = !restored;
             if (restored) windowWasMinimized = false;
           }
@@ -742,36 +741,16 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         } finally {
           if (tabSetupFailed && manageManagedWindowState && profileLock) {
             const restoreClient = client ?? windowClient;
-            let restored = false;
-            if (restoreClient) {
+            let restored = await restoreChromeWindowByPid(chrome.pid, logger);
+            if (!restored && restoreClient) {
               restored = await setChromeWindowState(restoreClient, "normal", logger, {
                 targetId: isolatedTargetId ?? undefined,
                 reason: "tab-setup-failed",
               });
             }
-            if (!restored) restored = await restoreChromeWindowByPid(chrome.pid, logger);
             if (restored) windowWasMinimized = false;
-          } else if (config.startMinimized && windowWasMinimized && !windowParkedAfterSetup) {
-            const reparkClient =
-              client ??
-              windowClient ??
-              ((await CDP({ host: chromeHost, port: chrome.port }).catch(
-                () => null,
-              )) as ChromeClient | null);
-            if (reparkClient) {
-              windowParkedAfterSetup = await setChromeWindowState(
-                reparkClient,
-                "minimized",
-                logger,
-                {
-                  targetId: isolatedTargetId ?? undefined,
-                  reason: "tab-setup",
-                },
-              );
-              if (reparkClient !== client && reparkClient !== windowClient) {
-                await reparkClient.close().catch(() => undefined);
-              }
-            }
+          } else if (config.startMinimized && manageManagedWindowState && !windowParkedAfterSetup) {
+            windowParkedAfterSetup = await hideChromeWindow(chrome, logger);
           }
           await windowClient?.close().catch(() => undefined);
           if (manageManagedWindowState) await releaseProfileLockIfHeld();
@@ -816,15 +795,12 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         ? await acquireProfileLockIfNeeded(lifecycleLockTimeoutMs)
         : false;
       try {
-        let restored = false;
-        if (client) {
+        let restored = await restoreChromeWindowByPid(chrome?.pid, logger);
+        if (!restored && client) {
           restored = await setChromeWindowState(client, "normal", logger, {
             targetId: isolatedTargetId ?? lastTargetId,
             reason,
           });
-        }
-        if (!restored) {
-          restored = await restoreChromeWindowByPid(chrome?.pid, logger);
         }
         if (restored) {
           authenticatedWindowParked = false;
