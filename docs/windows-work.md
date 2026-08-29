@@ -20,6 +20,8 @@ Read this when working on `ask_pro` from Windows and add new findings here.
   installed plugin cache.
 - Browser login is human-controlled. If ChatGPT asks for login, MFA, or a
   challenge, leave Chrome open and resume with `ask-pro --resume <session-id>`.
+  Challenge recovery requires a visible active challenge control or surface;
+  queued composer text and class or ID substrings do not trigger it.
 - Chrome DevTools state is recorded in each session's `browser.json`; use the
   saved port for DOM inspection when a live browser needs debugging.
 - Concurrent fresh and resumed runs on one managed profile use PID-backed

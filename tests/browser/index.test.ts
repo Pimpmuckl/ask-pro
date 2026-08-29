@@ -339,16 +339,67 @@ describe("human intervention detection", () => {
     await expect(__test__.detectHumanInterventionReason(Runtime as never)).resolves.toBeNull();
   });
 
-  test("does not scan the full transcript text for challenge words", async () => {
-    const Runtime = {
-      evaluate: vi.fn().mockResolvedValue({ result: { value: null } }),
+  test("ignores a stale challenge title and benign challenge metadata in a populated composer with an attachment", () => {
+    class FakeElement {
+      constructor(
+        readonly textContent = "",
+        readonly children: FakeElement[] = [],
+      ) {}
+
+      closest() {
+        return null;
+      }
+
+      getBoundingClientRect() {
+        return { left: 20, top: 20, width: 600, height: 100 };
+      }
+
+      hasAttribute() {
+        return false;
+      }
+
+      contains(node: FakeElement | null) {
+        return node === this || this.children.includes(node as FakeElement);
+      }
+
+      querySelector(selector: string) {
+        return selector === 'textarea,[contenteditable="true"]' ? (this.children[0] ?? null) : null;
+      }
+    }
+
+    const composer = new FakeElement("Normal prompt about MFA recovery.");
+    const attachment = new FakeElement("CONTEXT.zip");
+    const composerForm = new FakeElement("Normal prompt about MFA recovery. CONTEXT.zip", [
+      composer,
+      attachment,
+    ]);
+    const document = {
+      title: "Just a moment...",
+      querySelector: (selector: string) =>
+        selector.includes('[class*="challenge" i]') || selector.includes('[id*="challenge" i]')
+          ? attachment
+          : null,
+      querySelectorAll: (selector: string) => {
+        if (selector === 'textarea,[contenteditable="true"]') return [composer];
+        if (selector === 'form,[role="dialog"]') return [composerForm];
+        return [];
+      },
+      elementFromPoint: () => composer,
     };
 
-    await __test__.detectHumanInterventionReason(Runtime as never);
-
-    expect(Runtime.evaluate.mock.calls[0]?.[0]?.expression).not.toContain(
-      "document.body?.innerText",
-    );
+    expect(
+      new Function(
+        "document",
+        "HTMLElement",
+        "window",
+        "location",
+        "getComputedStyle",
+        `return ${__test__.buildHumanInterventionProbeExpression()}`,
+      )(document, FakeElement, { innerWidth: 1280, innerHeight: 720 }, { pathname: "/" }, () => ({
+        display: "block",
+        visibility: "visible",
+      })),
+    ).toBeNull();
   });
 });
 

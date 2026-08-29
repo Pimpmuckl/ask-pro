@@ -276,14 +276,10 @@ function selectClosableLaunchTargetIds(
   );
 }
 
-async function detectHumanInterventionReason(
-  Runtime: ChromeClient["Runtime"],
-): Promise<string | null> {
-  const { result } = await Runtime.evaluate({
-    expression: `(() => {
-      const title = String(document.title || '').toLowerCase();
+function buildHumanInterventionProbeExpression(): string {
+  return `(() => {
       const path = String(location?.pathname || '').toLowerCase();
-      const hasCloudflareScript = Boolean(document.querySelector('script[src*="challenges.cloudflare.com"]'));
+      const composerSelector = 'textarea,[contenteditable="true"]';
       const isVisible = (node) => {
         if (!(node instanceof HTMLElement)) return false;
         if (node.closest('[hidden],[aria-hidden="true"],[inert]')) return false;
@@ -296,17 +292,16 @@ async function detectHumanInterventionReason(
         const topNode = document.elementFromPoint(centerX, centerY);
         return topNode === node || node.contains(topNode);
       };
-      const composerVisible = Array.from(document.querySelectorAll('textarea,[contenteditable="true"]')).some(isVisible);
+      const composerVisible = Array.from(document.querySelectorAll(composerSelector)).some(isVisible);
       const hasConversation = Boolean(document.querySelector(${JSON.stringify(CONVERSATION_TURN_SELECTOR)}));
       if (/\\/(auth|login|signin)/i.test(path)) return 'login';
-      if (title.includes('just a moment') || hasCloudflareScript) return 'browser_challenge';
-      if (document.querySelector('input[autocomplete="one-time-code"],input[name*="otp" i],input[id*="otp" i],iframe[src*="captcha" i],[data-testid*="challenge" i],[class*="challenge" i],[id*="challenge" i]')) {
-        return 'browser_challenge';
-      }
-      if (composerVisible) return null;
-      const challengeSurfaces = Array.from(document.querySelectorAll('form,[role="dialog"]'));
+      const challengeControls = Array.from(document.querySelectorAll('input[autocomplete="one-time-code"],input[name*="otp" i],input[id*="otp" i],iframe[src*="captcha" i],iframe[src*="/challenge-platform/" i]'));
+      if (challengeControls.some(isVisible)) return 'browser_challenge';
+      const challengeSurfaces = Array.from(document.querySelectorAll('form,[role="dialog"]'))
+        .filter((node) => isVisible(node) && !node.querySelector(composerSelector));
       const challengeText = challengeSurfaces.map((node) => node.textContent || '').join(' ').toLowerCase();
       if (/\\b(mfa|two-factor|2fa|verification code|security check|verify you are human|captcha)\\b/i.test(challengeText)) return 'browser_challenge';
+      if (composerVisible) return null;
       if (hasConversation) return null;
       const nodes = Array.from(document.querySelectorAll('button,a,[role="button"]'));
       for (const node of nodes) {
@@ -317,7 +312,14 @@ async function detectHumanInterventionReason(
         if (/^(log in|login|sign in|signin|continue with)\\b/i.test(label)) return 'login';
       }
       return null;
-    })()`,
+    })()`;
+}
+
+async function detectHumanInterventionReason(
+  Runtime: ChromeClient["Runtime"],
+): Promise<string | null> {
+  const { result } = await Runtime.evaluate({
+    expression: buildHumanInterventionProbeExpression(),
     returnByValue: true,
   });
   return typeof result?.value === "string" && result.value.length > 0 ? result.value : null;
@@ -2864,6 +2866,7 @@ export const __test__ = {
   isDisposableLaunchPageUrl,
   selectDisposableLaunchTargetIds,
   selectClosableLaunchTargetIds,
+  buildHumanInterventionProbeExpression,
   detectHumanInterventionReason,
   isLoginRecoveryUrl,
   waitForLogin,
