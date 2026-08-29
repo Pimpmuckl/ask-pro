@@ -7,6 +7,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   buildChromeLaunchFlags,
   buildChromeFlags,
+  hideChromeWindow,
   maybeReuseRunningChrome,
   restoreChromeWindowByPid,
   shouldLaunchChromeMinimized,
@@ -18,25 +19,37 @@ import {
 } from "../../src/browser/profileState.js";
 
 describe("chrome lifecycle window restore", () => {
-  test("uses a Windows pid fallback to restore retained Chrome windows", async () => {
-    const execFileAsync = vi.fn().mockResolvedValue({ stdout: "", stderr: "" });
+  test("hides managed Windows Chrome and restores it for human recovery", async () => {
+    const execFileAsync = vi.fn().mockResolvedValue({ stdout: "changed", stderr: "" });
     const logger = vi.fn<(message: string) => void>();
 
+    const hidden = await hideChromeWindow({ pid: 1234 } as never, logger, {
+      platform: "win32",
+      execFileAsync: execFileAsync as never,
+    });
     const restored = await restoreChromeWindowByPid(1234, logger, {
       platform: "win32",
       execFileAsync: execFileAsync as never,
     });
 
+    expect(hidden).toBe(true);
     expect(restored).toBe(true);
-    expect(execFileAsync).toHaveBeenCalledWith(
+    expect(execFileAsync).toHaveBeenCalledTimes(2);
+    expect(execFileAsync).toHaveBeenNthCalledWith(
+      1,
       "powershell.exe",
       expect.arrayContaining(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command"]),
       expect.objectContaining({ windowsHide: true, timeout: 5000 }),
     );
-    const script = execFileAsync.mock.calls[0]?.[1]?.at(-1);
-    expect(script).toContain("[uint32]1234");
-    expect(script).toContain("ShowWindowAsync($hWnd, 9)");
-    expect(logger).toHaveBeenCalledWith("[browser] Chrome window restored by pid fallback");
+    const hideScript = execFileAsync.mock.calls[0]?.[1]?.at(-1);
+    const restoreScript = execFileAsync.mock.calls[1]?.[1]?.at(-1);
+    expect(hideScript).toContain("[uint32]1234");
+    expect(hideScript).toContain("GetProp($hWnd, 'AskProHumanRecovery')");
+    expect(hideScript).toContain("ShowWindowAsync($hWnd, 0)");
+    expect(restoreScript).toContain("SetProp($hWnd, 'AskProHumanRecovery', [IntPtr]1)");
+    expect(restoreScript).toContain("ShowWindowAsync($hWnd, 9)");
+    expect(logger).toHaveBeenCalledWith("[browser] Chrome window hidden by pid");
+    expect(logger).toHaveBeenCalledWith("[browser] Chrome window restored by pid");
   });
 
   test("does not run the Windows restore fallback on other platforms", async () => {

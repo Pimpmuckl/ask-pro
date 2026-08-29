@@ -38,7 +38,7 @@ import { defaultAskProBrowserProfileDir } from "./profilePaths.js";
 import { applyPageLanguageOverrides, seedChromeProfileLanguage } from "./language.js";
 import { syncCookies } from "./cookies.js";
 import { CHATGPT_URL } from "./constants.js";
-import { isChromeWindowMinimized, setChromeWindowState } from "./actions/windowState.js";
+import { setChromeWindowState } from "./actions/windowState.js";
 import type { ManagedChromeRunLease } from "./profileState.js";
 import {
   acquireProfileRunLock,
@@ -276,13 +276,12 @@ export async function resumeBrowserSession(
         : null;
     try {
       if (windowTransitionLock) {
-        const windowIsMinimized = await isChromeWindowMinimized(client);
-        if (windowIsMinimized !== false) {
-          const restored = await setChromeWindowState(client, "normal", logger, {
+        const restored = await restoreChromeWindowByPid(liveRuntime.chromePid, logger);
+        if (!restored) {
+          await setChromeWindowState(client, "normal", logger, {
             targetId: connectedTargetId,
             reason: "resume",
           });
-          if (!restored) await restoreChromeWindowByPid(liveRuntime.chromePid, logger);
         }
       }
     } finally {
@@ -554,13 +553,12 @@ async function resumeBrowserSessionViaNewChrome(
       client = isolatedConnection.client;
       isolatedTargetId = isolatedConnection.targetId;
       if (manageManagedWindowState) {
-        const windowIsMinimized = await isChromeWindowMinimized(client);
-        if (windowIsMinimized !== false) {
-          const restored = await setChromeWindowState(client, "normal", logger, {
+        const restored = await restoreChromeWindowByPid(chrome.pid, logger);
+        if (!restored) {
+          await setChromeWindowState(client, "normal", logger, {
             targetId: isolatedTargetId,
             reason: "resume-relaunch",
           });
-          if (!restored) await restoreChromeWindowByPid(chrome.pid, logger);
         }
       }
     } catch (error) {
