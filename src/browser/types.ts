@@ -46,8 +46,6 @@ export interface BrowserAutomationConfig {
   assistantRecheckDelayMs?: number;
   /** Time budget for the delayed recheck attempt. */
   assistantRecheckTimeoutMs?: number;
-  /** Wait for an existing shared Chrome to appear before launching a new one. */
-  reuseChromeWaitMs?: number;
   /** Max time to wait for a shared manual-login profile lock (serializes parallel runs). */
   profileLockTimeoutMs?: number;
   /** Delay before starting periodic auto-reattach attempts after a timeout. */

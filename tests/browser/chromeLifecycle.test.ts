@@ -1,15 +1,21 @@
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import {
   buildChromeLaunchFlags,
   buildChromeFlags,
+  maybeReuseRunningChrome,
   restoreChromeWindowByPid,
   shouldLaunchChromeMinimized,
   spawnWindowsProcessOutsideJob,
 } from "../../src/browser/chromeLifecycle.js";
+import {
+  markChromeLaunchStarting,
+  writeDevToolsActivePort,
+} from "../../src/browser/profileState.js";
 
 describe("chrome lifecycle window restore", () => {
   test("uses a Windows pid fallback to restore retained Chrome windows", async () => {
@@ -49,25 +55,29 @@ describe("chrome lifecycle window restore", () => {
 
 describe("chrome lifecycle launch window state", () => {
   test.runIf(process.platform === "win32")(
-    "launches managed processes outside the Windows controller job",
+    "launches managed processes outside the Windows controller job at below-normal priority",
     async () => {
       const dir = await mkdtemp(path.join(os.tmpdir(), "ask pro broker-"));
       const marker = path.join(dir, "child.json");
       const expectedArgs = ["plain", "with spaces", 'quote"and\\trailing\\'];
-      const script = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, JSON.stringify({ argv: process.argv.slice(1), cwd: process.cwd(), env: process.env.ASK_PRO_BROKER_TEST, ppid: process.ppid }))`;
+      const script = `require("node:fs").writeFileSync(${JSON.stringify(marker)}, JSON.stringify({ argv: process.argv.slice(1), cwd: process.cwd(), env: process.env.ASK_PRO_BROKER_TEST, ppid: process.ppid, priority: require("node:os").getPriority() }))`;
+      type BrokerPayload = {
+        argv: string[];
+        cwd: string;
+        env: string;
+        ppid: number;
+        priority: number;
+      };
       spawnWindowsProcessOutsideJob(process.execPath, ["-e", script, ...expectedArgs], {
         cwd: dir,
         env: { ...process.env, ASK_PRO_BROKER_TEST: "round trip" },
       });
 
       try {
-        let payload: { argv: string[]; cwd: string; env: string; ppid: number } | null = null;
+        let payload: BrokerPayload | null = null;
         for (let attempt = 0; attempt < 100 && !payload; attempt += 1) {
           payload = await readFile(marker, "utf8")
-            .then(
-              (value) =>
-                JSON.parse(value) as { argv: string[]; cwd: string; env: string; ppid: number },
-            )
+            .then((value) => JSON.parse(value) as BrokerPayload)
             .catch(() => null);
           if (!payload) await new Promise((resolve) => setTimeout(resolve, 100));
         }
@@ -77,6 +87,7 @@ describe("chrome lifecycle launch window state", () => {
         expect(payload.argv).toEqual(expectedArgs);
         expect(payload.cwd).toBe(dir);
         expect(payload.env).toBe("round trip");
+        expect(payload.priority).toBe(os.constants.priority.PRIORITY_BELOW_NORMAL);
         const parentName = execFileSync(
           "powershell.exe",
           [
@@ -94,6 +105,36 @@ describe("chrome lifecycle launch window state", () => {
     },
     15_000,
   );
+
+  test("reattaches when brokered Chrome outlives its startup controller", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ask pro handoff-"));
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Test server has no TCP port.");
+    await markChromeLaunchStarting(dir);
+    const publishPort = setTimeout(() => {
+      void writeDevToolsActivePort(dir, address.port);
+    }, 50);
+    const logger = vi.fn<(message: string) => void>();
+
+    try {
+      const chrome = await maybeReuseRunningChrome(dir, logger);
+
+      expect(chrome?.port).toBe(address.port);
+      expect(logger).toHaveBeenCalledWith(expect.stringMatching(/startup handoff/u));
+    } finally {
+      clearTimeout(publishPort);
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 
   test("keeps Chrome CPU protections enabled for long headed waits", () => {
     const flags = buildChromeLaunchFlags(buildChromeFlags(false, undefined, "en-US,en"));

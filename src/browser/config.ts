@@ -17,7 +17,6 @@ export const DEFAULT_BROWSER_CONFIG: ResolvedBrowserConfig = {
   inputTimeoutMs: 60_000,
   assistantRecheckDelayMs: 0,
   assistantRecheckTimeoutMs: 120_000,
-  reuseChromeWaitMs: 10_000,
   profileLockTimeoutMs: 300_000,
   autoReattachDelayMs: 0,
   autoReattachIntervalMs: 0,
@@ -85,7 +84,6 @@ export function resolveBrowserConfig(
       config?.assistantRecheckDelayMs ?? DEFAULT_BROWSER_CONFIG.assistantRecheckDelayMs,
     assistantRecheckTimeoutMs:
       config?.assistantRecheckTimeoutMs ?? DEFAULT_BROWSER_CONFIG.assistantRecheckTimeoutMs,
-    reuseChromeWaitMs: config?.reuseChromeWaitMs ?? DEFAULT_BROWSER_CONFIG.reuseChromeWaitMs,
     profileLockTimeoutMs:
       config?.profileLockTimeoutMs ?? DEFAULT_BROWSER_CONFIG.profileLockTimeoutMs,
     autoReattachDelayMs: config?.autoReattachDelayMs ?? DEFAULT_BROWSER_CONFIG.autoReattachDelayMs,
