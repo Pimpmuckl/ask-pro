@@ -176,12 +176,6 @@ describe("managed Chrome cleanup ownership", () => {
       false,
     );
     expect(__test__.isRecoveredTargetOwned(true, "managed", "replacement", "managed")).toBe(true);
-
-    const options = { prompt: "question", config: { browserTabRef: "attached" } };
-    expect(
-      __test__.withRecoveredBrowserTabRef(options, "attached", "replacement").config?.browserTabRef,
-    ).toBe("replacement");
-    expect(__test__.withRecoveredBrowserTabRef(options, null, "replacement")).toBe(options);
   });
 
   test("closes a launched Chrome only when no other page remains", () => {

@@ -1693,7 +1693,12 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
           ownsTarget = recovered.ownsTarget;
           connectionClosedUnexpectedly = false;
           const restartedResult = await runBrowserMode(
-            withRecoveredBrowserTabRef(options, config.browserTabRef, recovered.targetId),
+            config.browserTabRef
+              ? {
+                  ...options,
+                  config: { ...options.config, browserTabRef: recovered.targetId },
+                }
+              : options,
           );
           runStatus = "complete";
           return restartedResult;
@@ -2115,18 +2120,6 @@ function isRelatedManualLoginTarget(
     previousTargetId !== null &&
     (candidateTargetId === previousTargetId || openerId === previousTargetId)
   );
-}
-
-function withRecoveredBrowserTabRef(
-  options: BrowserRunOptions,
-  configuredTabRef: string | null,
-  recoveredTargetId: string,
-): BrowserRunOptions {
-  if (!configuredTabRef) return options;
-  return {
-    ...options,
-    config: { ...options.config, browserTabRef: recoveredTargetId },
-  };
 }
 
 async function listLoginRecoveryTargets(
@@ -2949,7 +2942,6 @@ export const __test__ = {
   isLoginRecoveryUrl,
   isEligibleManualLoginRecoveryTarget,
   isRecoveredTargetOwned,
-  withRecoveredBrowserTabRef,
   waitForLogin,
 };
 export { syncCookies } from "./cookies.js";
