@@ -196,7 +196,7 @@ export async function ensureLoggedIn(
     returnByValue: true,
   });
   const probe = normalizeLoginProbe(outcome.result?.value);
-  if (probe.ok) {
+  if (probe.ok && (!options.passive || probe.status === 200)) {
     logger(
       `Login check passed (status=${probe.status}, domLoginCta=${Boolean(probe.domLoginCta)})`,
     );

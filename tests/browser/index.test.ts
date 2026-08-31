@@ -444,14 +444,14 @@ describe("login recovery reveal hook", () => {
     expect(logger).toHaveBeenCalledWith("Opened ChatGPT login surface (click: log in).");
   });
 
-  test("keeps passive login probes read-only", async () => {
+  test("requires affirmative backend authentication from passive login probes", async () => {
     const Runtime = {
       evaluate: vi.fn().mockResolvedValue({
         result: {
           value: {
-            ok: false,
-            status: 401,
-            domLoginCta: true,
+            ok: true,
+            status: 0,
+            domLoginCta: false,
             onAuthPage: false,
             pageUrl: "https://chatgpt.com/",
           },
