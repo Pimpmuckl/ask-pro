@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Reacquire the managed ChatGPT tab and DevTools endpoint after manual sign-in
+  instead of reporting a replaced login target as a user-closed Chrome window.
 - Hide ordinary managed Chrome windows from the Windows desktop after isolated
   tab setup, and restore them only for human login, challenge, or recovery.
 - Require a visible active login or challenge surface before restoring managed
