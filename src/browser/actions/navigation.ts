@@ -230,7 +230,7 @@ export async function ensureLoggedIn(
   logger(
     `Login probe failed (status=${probe.status}, domLoginCta=${Boolean(probe.domLoginCta)}, onAuthPage=${Boolean(
       probe.onAuthPage,
-    )}, url=${probe.pageUrl ?? "n/a"}, error=${probe.error ?? "none"})`,
+    )}, url=${pageOriginForLog(probe.pageUrl)}, error=${probe.error ?? "none"})`,
   );
   if (!options.passive) await openLoginSurface(Runtime, logger);
 
@@ -242,6 +242,15 @@ export async function ensureLoggedIn(
       : "ChatGPT login appears missing; sign in to ChatGPT in the opened browser, then resume.";
 
   throw new Error(`ChatGPT session not detected.${domLabel} ${cookieHint}`);
+}
+
+function pageOriginForLog(pageUrl?: string | null): string {
+  if (!pageUrl) return "n/a";
+  try {
+    return new URL(pageUrl).origin;
+  } catch {
+    return "invalid";
+  }
 }
 
 async function openLoginSurface(

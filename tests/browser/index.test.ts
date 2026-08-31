@@ -445,6 +445,7 @@ describe("login recovery reveal hook", () => {
   });
 
   test("requires affirmative backend authentication from passive login probes", async () => {
+    const logger = vi.fn<(message: string) => void>();
     const Runtime = {
       evaluate: vi.fn().mockResolvedValue({
         result: {
@@ -453,20 +454,22 @@ describe("login recovery reveal hook", () => {
             status: 0,
             domLoginCta: false,
             onAuthPage: false,
-            pageUrl: "https://chatgpt.com/",
+            pageUrl: "https://auth.openai.com/authorize?code=secret#state",
           },
         },
       }),
     };
 
     await expect(
-      ensureLoggedIn(Runtime as never, vi.fn<(message: string) => void>(), {
+      ensureLoggedIn(Runtime as never, logger, {
         appliedCookies: 0,
         passive: true,
       }),
     ).rejects.toThrow(/session not detected/i);
 
     expect(Runtime.evaluate).toHaveBeenCalledTimes(1);
+    expect(logger).toHaveBeenCalledWith(expect.stringContaining("url=https://auth.openai.com"));
+    expect(logger.mock.calls.flat().join("\n")).not.toContain("secret");
   });
 
   test("calls auth-needed hook before non-manual login failures escape", async () => {
