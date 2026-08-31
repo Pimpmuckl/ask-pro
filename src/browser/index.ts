@@ -58,14 +58,16 @@ import type { LaunchedChrome } from "chrome-launcher";
 import { BrowserAutomationError } from "./errors.js";
 import { defaultAskProBrowserProfileDir } from "./profilePaths.js";
 import { applyPageLanguageOverrides, seedChromeProfileLanguage } from "./language.js";
-import { alignPromptEchoPair, buildPromptEchoMatcher } from "./reattachHelpers.js";
+import { alignPromptEchoPair, buildPromptEchoMatcher, withTimeout } from "./reattachHelpers.js";
 import type { ManagedChromeRunLease, ProfileRunLock } from "./profileState.js";
 import {
   cleanupStaleProfileState,
   acquireProfileRunLock,
   createManagedChromeRunLease,
   releaseManagedChromeRunLeaseAndCountPeers,
+  readDevToolsPort,
   shouldCleanupManualLoginProfileState,
+  verifyDevToolsReachable,
   writeChromePid,
   writeDevToolsActivePort,
 } from "./profileState.js";
@@ -655,6 +657,7 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
   let disablePostSubmitInputGuard: () => Promise<boolean> = async () => true;
   let stopHumanInterventionMonitor: (() => void) | null = null;
   let humanInterventionPromise: Promise<never> | null = null;
+  let manualLoginRecoveryInProgress = false;
 
   try {
     try {
@@ -765,12 +768,14 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     }
     const disconnectPromise = new Promise<never>((_, reject) => {
       client?.on("disconnect", () => {
+        if (manualLoginRecoveryInProgress) {
+          logger("Managed Chrome target changed during manual login; discovering its replacement.");
+          return;
+        }
         connectionClosedUnexpectedly = true;
-        logger("Chrome window closed; attempting to abort run.");
+        logger("Managed Chrome connection lost; preserving the run for resume.");
         reject(
-          new Error(
-            "Chrome window closed before ask-pro finished. Please keep it open until completion.",
-          ),
+          new Error("Managed Chrome process or DevTools target was lost before ask-pro finished."),
         );
       });
     });
@@ -894,19 +899,19 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
     await raceWithDisconnect(navigateToChatGPT(Page, Runtime, baseUrl, logger));
     await raceWithDisconnect(ensureNotBlocked(Runtime, config.headless, logger));
     // Learned: login checks must happen on the base domain before jumping into project URLs.
+    if (manualLogin) manualLoginRecoveryInProgress = true;
     await raceWithDisconnect(
       waitForLogin({
         runtime: Runtime,
         logger,
         appliedCookies,
         manualLogin,
-        timeoutMs: config.timeoutMs,
-        manualLoginWaitMs: config.manualLoginWaitMs,
         onAuthNeeded: async () => {
           await revealAuthenticatedWindow("login-required");
         },
       }),
     );
+    if (manualLogin) manualLoginRecoveryInProgress = false;
 
     if (config.url !== baseUrl) {
       await raceWithDisconnect(
@@ -1596,7 +1601,26 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
       controllerPid: process.pid,
     };
   } catch (error) {
-    const normalizedError = error instanceof Error ? error : new Error(String(error));
+    let normalizedError = error instanceof Error ? error : new Error(String(error));
+    if (manualLoginRecoveryInProgress && isWebSocketClosureError(normalizedError)) {
+      const livePort = await readDevToolsPort(userDataDir);
+      const endpoint = livePort
+        ? await verifyDevToolsReachable({
+            host: chromeHost,
+            port: livePort,
+            attempts: 2,
+            timeoutMs: 1000,
+          })
+        : null;
+      if (endpoint?.ok) {
+        normalizedError = new BrowserAutomationError(
+          "ChatGPT login target changed; discovering the authenticated replacement.",
+          { stage: "login-required" },
+          normalizedError,
+        );
+        connectionClosedUnexpectedly = false;
+      }
+    }
     preserveWindowStateOnError =
       options.shouldPreserveWindowStateOnError?.(normalizedError) ?? false;
     const socketClosed = connectionClosedUnexpectedly || isWebSocketClosureError(normalizedError);
@@ -1631,27 +1655,56 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
         if (!recoveryRuntime) {
           throw normalizedError;
         }
-        logger(
-          "Manual login mode: waiting for sign-in to complete, then restarting the ask-pro submission...",
-        );
-        await openLoginSurfaceForHumanAction(recoveryRuntime, logger).catch(() => undefined);
-        await revealAuthenticatedWindow("login-required");
-        await waitForManualLoginOnLiveChrome({
-          host: chromeHost,
-          port: chrome.port,
-          logger,
-          timeoutMs: Math.min(config.manualLoginWaitMs ?? config.timeoutMs, config.timeoutMs),
-        });
-        logger("Manual login completed; restarting ask-pro submission.");
-        preserveBrowserOnError = false;
-        await client?.close().catch(() => undefined);
-        if (isolatedTargetId && ownsTarget) {
-          await closeTab(chrome.port, isolatedTargetId, logger, chromeHost);
-          ownsTarget = false;
+        manualLoginRecoveryInProgress = true;
+        try {
+          logger(
+            "Manual login mode: waiting for sign-in to complete, then restarting the ask-pro submission...",
+          );
+          await openLoginSurfaceForHumanAction(recoveryRuntime, logger).catch(() => undefined);
+          await revealAuthenticatedWindow("login-required");
+          const recovered = await waitForManualLoginOnLiveChrome({
+            host: chromeHost,
+            port: chrome.port,
+            userDataDir,
+            previousTargetId: isolatedTargetId,
+            previousTargetOwned: ownsTarget,
+            logger,
+            timeoutMs: Math.min(config.manualLoginWaitMs ?? config.timeoutMs, config.timeoutMs),
+          });
+          logger("Manual login completed; restarting ask-pro submission.");
+          preserveBrowserOnError = false;
+          await client?.close().catch(() => undefined);
+          if (isolatedTargetId && ownsTarget) {
+            await closeTab(chrome.port, isolatedTargetId, logger, chromeHost);
+            ownsTarget = false;
+          }
+          if (chrome.port !== recovered.port) {
+            const replacementChrome = await maybeReuseRunningChrome(userDataDir, logger);
+            if (!replacementChrome || replacementChrome.port !== recovered.port) {
+              throw new BrowserAutomationError(
+                "Managed Chrome lifecycle changed during login and could not be reacquired.",
+                { stage: "connection-lost" },
+              );
+            }
+            releaseChromeProcessHandle(chrome);
+            Object.assign(chrome, replacementChrome);
+          }
+          isolatedTargetId = recovered.ownsTarget ? recovered.targetId : null;
+          ownsTarget = recovered.ownsTarget;
+          connectionClosedUnexpectedly = false;
+          const restartedResult = await runBrowserMode(
+            config.browserTabRef
+              ? {
+                  ...options,
+                  config: { ...options.config, browserTabRef: recovered.targetId },
+                }
+              : options,
+          );
+          runStatus = "complete";
+          return restartedResult;
+        } finally {
+          manualLoginRecoveryInProgress = false;
         }
-        const restartedResult = await runBrowserMode(options);
-        runStatus = "complete";
-        return restartedResult;
       }
       throw new BrowserAutomationError(
         isLoginRequired
@@ -1673,12 +1726,12 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
       throw normalizedError;
     }
     if ((config.debug || process.env.CHATGPT_DEVTOOLS_TRACE === "1") && normalizedError.stack) {
-      logger(`Chrome window closed before completion: ${normalizedError.message}`);
+      logger(`Managed Chrome connection lost before completion: ${normalizedError.message}`);
       logger(normalizedError.stack);
     }
     await emitRuntimeHint();
     throw new BrowserAutomationError(
-      "Chrome window closed before ask-pro finished. Please keep it open until completion.",
+      "Managed Chrome process or DevTools target was lost before ask-pro finished. The session remains resumable.",
       {
         stage: "connection-lost",
         runtime: {
@@ -1864,8 +1917,6 @@ async function waitForLogin({
   logger,
   appliedCookies,
   manualLogin,
-  timeoutMs,
-  manualLoginWaitMs,
   onAuthNeeded,
   ensureLoggedInFn,
 }: {
@@ -1873,8 +1924,6 @@ async function waitForLogin({
   logger: BrowserLogger;
   appliedCookies: number;
   manualLogin: boolean;
-  timeoutMs: number;
-  manualLoginWaitMs?: number;
   onAuthNeeded?: () => void | Promise<void>;
   ensureLoggedInFn?: typeof ensureLoggedIn;
 }): Promise<void> {
@@ -1897,38 +1946,18 @@ async function waitForLogin({
     }
     return;
   }
-  const deadline = Date.now() + Math.min(manualLoginWaitMs ?? timeoutMs ?? 1_200_000, timeoutMs);
-  let lastNotice = 0;
-  let authNeededNotified = false;
-  while (Date.now() < deadline) {
-    try {
-      await checkLogin(runtime, logger, { appliedCookies });
-      return;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!isRecoverableManualLoginMessage(message)) {
-        await notifyAuthNeeded();
-        throw error;
-      }
-      if (!authNeededNotified) {
-        authNeededNotified = true;
-        await notifyAuthNeeded();
-      }
-      const now = Date.now();
-      if (now - lastNotice > 5000) {
-        logger(
-          "Manual login mode: please sign into chatgpt.com in the opened Chrome window; waiting for session to appear...",
-        );
-        lastNotice = now;
-      }
-      await delay(1000);
-    }
+  try {
+    await checkLogin(runtime, logger, { appliedCookies });
+  } catch (error) {
+    await notifyAuthNeeded();
+    const message = error instanceof Error ? error.message : String(error);
+    if (!isRecoverableManualLoginMessage(message)) throw error;
+    throw new BrowserAutomationError(
+      "ChatGPT login required; waiting for sign-in in the open managed browser.",
+      { stage: "login-required" },
+      error,
+    );
   }
-  await notifyAuthNeeded();
-  throw new BrowserAutomationError(
-    "Manual login mode timed out waiting for ChatGPT session; sign in in the open browser, then resume.",
-    { stage: "login-required" },
-  );
 }
 
 function isRecoverableManualLoginMessage(message: string): boolean {
@@ -1946,29 +1975,96 @@ function isRecoverableManualLoginMessage(message: string): boolean {
 async function waitForManualLoginOnLiveChrome({
   host,
   port,
+  userDataDir,
+  previousTargetId,
+  previousTargetOwned,
   logger,
   timeoutMs,
 }: {
   host: string;
   port: number;
+  userDataDir: string;
+  previousTargetId: string | null;
+  previousTargetOwned: boolean;
   logger: BrowserLogger;
   timeoutMs: number;
-}): Promise<void> {
+}): Promise<{ port: number; targetId: string; ownsTarget: boolean }> {
   const deadline = Date.now() + timeoutMs;
   let lastNotice = 0;
+  let currentPort = port;
   while (Date.now() < deadline) {
-    const targets = await listLoginRecoveryTargets(host, port).catch(() => []);
+    const savedPort = await readDevToolsPort(userDataDir);
+    if (savedPort && savedPort !== currentPort) {
+      currentPort = savedPort;
+      logger(
+        `Managed Chrome DevTools endpoint changed during login; continuing on port ${savedPort}.`,
+      );
+    }
+    let targets: Awaited<ReturnType<typeof listLoginRecoveryTargets>>;
+    try {
+      targets = await listLoginRecoveryTargets(host, currentPort);
+    } catch {
+      const replacementPort = await readDevToolsPort(userDataDir);
+      if (replacementPort && replacementPort !== currentPort) {
+        currentPort = replacementPort;
+        logger(
+          `Managed Chrome DevTools endpoint changed during login; continuing on port ${replacementPort}.`,
+        );
+        continue;
+      }
+      const endpoint = await verifyDevToolsReachable({
+        host,
+        port: currentPort,
+        attempts: 1,
+        timeoutMs: 1000,
+      });
+      if (!endpoint.ok) {
+        throw new BrowserAutomationError(
+          "Managed Chrome process or DevTools endpoint was lost during manual login. The session remains resumable.",
+          { stage: "connection-lost" },
+        );
+      }
+      targets = [];
+    }
     for (const target of targets) {
+      const targetId = target.targetId ?? target.id;
+      if (!targetId) continue;
       let client: ChromeClient | null = null;
       try {
         client = (await CDP({
           host,
-          port,
-          target: target.targetId ?? target.id,
+          port: currentPort,
+          target: targetId,
         })) as ChromeClient;
-        if (await hasRecoveredChatGptComposer(client.Runtime)) {
-          return;
+        const targetInfo = await client.Target.getTargetInfo({ targetId }).catch(() => null);
+        const openerId = targetInfo?.targetInfo?.openerId;
+        if (
+          !isEligibleManualLoginRecoveryTarget(
+            previousTargetOwned,
+            previousTargetId,
+            targetId,
+            openerId,
+          )
+        ) {
+          continue;
         }
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) break;
+        await withTimeout(
+          ensureLoggedIn(client.Runtime, logger, { appliedCookies: 0, passive: true }),
+          remainingMs,
+          "Manual login recovery probe timed out",
+        );
+        return {
+          port: currentPort,
+          targetId,
+          ownsTarget: isRecoveredTargetOwned(
+            previousTargetOwned,
+            previousTargetId,
+            targetId,
+            openerId,
+          ),
+        };
       } catch (error) {
         if (logger.verbose) {
           logger(
@@ -1979,6 +2075,7 @@ async function waitForManualLoginOnLiveChrome({
         await client?.close().catch(() => undefined);
       }
     }
+    if (Date.now() >= deadline) break;
     const now = Date.now();
     if (now - lastNotice > 5000) {
       logger("Manual login mode: waiting in the opened Chrome login tab...");
@@ -1992,39 +2089,37 @@ async function waitForManualLoginOnLiveChrome({
   );
 }
 
-async function hasRecoveredChatGptComposer(Runtime: ChromeClient["Runtime"]): Promise<boolean> {
-  const outcome = await Runtime.evaluate({
-    expression: `(() => {
-      const isVisible = (node) => {
-        if (!(node instanceof HTMLElement)) return false;
-        if (node.closest('[hidden],[aria-hidden="true"],[inert]')) return false;
-        const style = getComputedStyle(node);
-        if (style.display === 'none' || style.visibility === 'hidden') return false;
-        const rect = node.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 && !node.hasAttribute('disabled');
-      };
-      const href = String(location.href || '').toLowerCase();
-      let hostname = '';
-      try {
-        hostname = location.hostname.toLowerCase();
-      } catch {}
-      const text = String(document.body?.textContent || '').toLowerCase();
-      const authPage = href.includes('/auth/') || href.includes('/login') || href.includes('/signin');
-      const expired = text.includes('session has expired');
-      const loginCta = Array.from(document.querySelectorAll('a,button,[role="button"]')).some((node) => {
-        if (!isVisible(node)) return false;
-        const label = String(node.textContent || node.getAttribute('aria-label') || node.getAttribute('title') || '')
-          .toLowerCase()
-          .replace(/\\s+/g, ' ')
-          .trim();
-        return label === 'log in' || label === 'login' || label === 'sign in' || label === 'signin';
-      });
-      const composer = Array.from(document.querySelectorAll('textarea,[contenteditable="true"]')).some(isVisible);
-      return hostname === 'chatgpt.com' && composer && !authPage && !expired && !loginCta;
-    })()`,
-    returnByValue: true,
-  });
-  return outcome.result?.value === true;
+function isRecoveredTargetOwned(
+  previousTargetOwned: boolean,
+  previousTargetId: string | null,
+  recoveredTargetId: string,
+  openerId?: string,
+): boolean {
+  return (
+    previousTargetOwned && isRelatedManualLoginTarget(previousTargetId, recoveredTargetId, openerId)
+  );
+}
+
+function isEligibleManualLoginRecoveryTarget(
+  previousTargetOwned: boolean,
+  previousTargetId: string | null,
+  candidateTargetId: string,
+  openerId?: string,
+): boolean {
+  return (
+    previousTargetOwned || isRelatedManualLoginTarget(previousTargetId, candidateTargetId, openerId)
+  );
+}
+
+function isRelatedManualLoginTarget(
+  previousTargetId: string | null,
+  candidateTargetId: string,
+  openerId?: string,
+): boolean {
+  return (
+    previousTargetId !== null &&
+    (candidateTargetId === previousTargetId || openerId === previousTargetId)
+  );
 }
 
 async function listLoginRecoveryTargets(
@@ -2845,6 +2940,8 @@ export const __test__ = {
   buildHumanInterventionProbeExpression,
   detectHumanInterventionReason,
   isLoginRecoveryUrl,
+  isEligibleManualLoginRecoveryTarget,
+  isRecoveredTargetOwned,
   waitForLogin,
 };
 export { syncCookies } from "./cookies.js";

@@ -186,7 +186,7 @@ const LOGIN_CHECK_TIMEOUT_MS = 5_000;
 export async function ensureLoggedIn(
   Runtime: ChromeClient["Runtime"],
   logger: BrowserLogger,
-  options: { appliedCookies?: number | null; remoteSession?: boolean } = {},
+  options: { appliedCookies?: number | null; remoteSession?: boolean; passive?: boolean } = {},
 ) {
   // Learned: ChatGPT can render the UI (project view) while auth silently failed.
   // A backend-api probe plus DOM login CTA check catches both cases.
@@ -196,41 +196,43 @@ export async function ensureLoggedIn(
     returnByValue: true,
   });
   const probe = normalizeLoginProbe(outcome.result?.value);
-  if (probe.ok) {
+  if (probe.ok && (!options.passive || probe.status === 200)) {
     logger(
       `Login check passed (status=${probe.status}, domLoginCta=${Boolean(probe.domLoginCta)})`,
     );
     return;
   }
 
-  const accepted = await attemptWelcomeBackLogin(Runtime, logger);
-  if (accepted) {
-    // Learned: "Welcome back" account picker needs a click even when cookies are valid,
-    // and the redirect can lag, so re-probe before failing hard.
-    await delay(1500);
-    const retryOutcome = await Runtime.evaluate({
-      expression: buildLoginProbeExpression(LOGIN_CHECK_TIMEOUT_MS),
-      awaitPromise: true,
-      returnByValue: true,
-    });
-    const retryProbe = normalizeLoginProbe(retryOutcome.result?.value);
-    if (retryProbe.ok) {
-      logger("Login restored via Welcome back account picker");
-      return;
+  if (!options.passive) {
+    const accepted = await attemptWelcomeBackLogin(Runtime, logger);
+    if (accepted) {
+      // Learned: "Welcome back" account picker needs a click even when cookies are valid,
+      // and the redirect can lag, so re-probe before failing hard.
+      await delay(1500);
+      const retryOutcome = await Runtime.evaluate({
+        expression: buildLoginProbeExpression(LOGIN_CHECK_TIMEOUT_MS),
+        awaitPromise: true,
+        returnByValue: true,
+      });
+      const retryProbe = normalizeLoginProbe(retryOutcome.result?.value);
+      if (retryProbe.ok) {
+        logger("Login restored via Welcome back account picker");
+        return;
+      }
+      logger(
+        `Login retry after Welcome back failed (status=${retryProbe.status}, domLoginCta=${Boolean(
+          retryProbe.domLoginCta,
+        )})`,
+      );
     }
-    logger(
-      `Login retry after Welcome back failed (status=${retryProbe.status}, domLoginCta=${Boolean(
-        retryProbe.domLoginCta,
-      )})`,
-    );
   }
 
   logger(
     `Login probe failed (status=${probe.status}, domLoginCta=${Boolean(probe.domLoginCta)}, onAuthPage=${Boolean(
       probe.onAuthPage,
-    )}, url=${probe.pageUrl ?? "n/a"}, error=${probe.error ?? "none"})`,
+    )}, url=${pageOriginForLog(probe.pageUrl)}, error=${probe.error ?? "none"})`,
   );
-  await openLoginSurface(Runtime, logger);
+  if (!options.passive) await openLoginSurface(Runtime, logger);
 
   const domLabel = probe.domLoginCta ? " Login button detected on page." : "";
   const cookieHint = options.remoteSession
@@ -240,6 +242,15 @@ export async function ensureLoggedIn(
       : "ChatGPT login appears missing; sign in to ChatGPT in the opened browser, then resume.";
 
   throw new Error(`ChatGPT session not detected.${domLabel} ${cookieHint}`);
+}
+
+function pageOriginForLog(pageUrl?: string | null): string {
+  if (!pageUrl) return "n/a";
+  try {
+    return new URL(pageUrl).origin;
+  } catch {
+    return "invalid";
+  }
 }
 
 async function openLoginSurface(

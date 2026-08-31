@@ -163,11 +163,19 @@ describe("post-submit input guard scope", () => {
 });
 
 describe("managed Chrome cleanup ownership", () => {
-  test("delegates successful manual-login restarts to completed cleanup", () => {
-    const runtimeSource = readFileSync("src/browser/index.ts", "utf8");
-    expect(runtimeSource).toMatch(
-      /const restartedResult = await runBrowserMode\(options\);\s+runStatus = "complete";\s+return restartedResult;/,
+  test("preserves attached-tab ownership and follows its recovered target", () => {
+    expect(__test__.isEligibleManualLoginRecoveryTarget(false, "attached", "unrelated")).toBe(
+      false,
     );
+    expect(
+      __test__.isEligibleManualLoginRecoveryTarget(false, "attached", "replacement", "attached"),
+    ).toBe(true);
+    expect(__test__.isEligibleManualLoginRecoveryTarget(true, "managed", "unrelated")).toBe(true);
+    expect(__test__.isRecoveredTargetOwned(false, "attached", "attached")).toBe(false);
+    expect(__test__.isRecoveredTargetOwned(false, "attached", "replacement", "attached")).toBe(
+      false,
+    );
+    expect(__test__.isRecoveredTargetOwned(true, "managed", "replacement", "managed")).toBe(true);
   });
 
   test("closes a launched Chrome only when no other page remains", () => {
@@ -444,6 +452,34 @@ describe("login recovery reveal hook", () => {
     expect(logger).toHaveBeenCalledWith("Opened ChatGPT login surface (click: log in).");
   });
 
+  test("requires affirmative backend authentication from passive login probes", async () => {
+    const logger = vi.fn<(message: string) => void>();
+    const Runtime = {
+      evaluate: vi.fn().mockResolvedValue({
+        result: {
+          value: {
+            ok: true,
+            status: 0,
+            domLoginCta: false,
+            onAuthPage: false,
+            pageUrl: "https://auth.openai.com/authorize?code=secret#state",
+          },
+        },
+      }),
+    };
+
+    await expect(
+      ensureLoggedIn(Runtime as never, logger, {
+        appliedCookies: 0,
+        passive: true,
+      }),
+    ).rejects.toThrow(/session not detected/i);
+
+    expect(Runtime.evaluate).toHaveBeenCalledTimes(1);
+    expect(logger).toHaveBeenCalledWith(expect.stringContaining("url=https://auth.openai.com"));
+    expect(logger.mock.calls.flat().join("\n")).not.toContain("secret");
+  });
+
   test("calls auth-needed hook before non-manual login failures escape", async () => {
     const onAuthNeeded = vi.fn();
     const error = new Error("ChatGPT session not detected. Login button detected on page.");
@@ -454,7 +490,6 @@ describe("login recovery reveal hook", () => {
         logger: vi.fn<(message: string) => void>(),
         appliedCookies: 0,
         manualLogin: false,
-        timeoutMs: 1000,
         onAuthNeeded,
         ensureLoggedInFn: vi.fn().mockRejectedValue(error),
       }),
@@ -473,7 +508,6 @@ describe("login recovery reveal hook", () => {
         logger,
         appliedCookies: 0,
         manualLogin: false,
-        timeoutMs: 1000,
         onAuthNeeded: vi.fn().mockRejectedValue(new Error("restore failed")),
         ensureLoggedInFn: vi.fn().mockRejectedValue(error),
       }),
@@ -494,7 +528,6 @@ describe("login recovery reveal hook", () => {
         logger: vi.fn<(message: string) => void>(),
         appliedCookies: 0,
         manualLogin: true,
-        timeoutMs: 1000,
         onAuthNeeded,
         ensureLoggedInFn: vi.fn().mockRejectedValue(error),
       }),
@@ -503,10 +536,10 @@ describe("login recovery reveal hook", () => {
     expect(onAuthNeeded).toHaveBeenCalledTimes(1);
   });
 
-  test("continues manual-login polling if auth-needed reveal fails", async () => {
+  test("routes manual login to target recovery if auth-needed reveal fails", async () => {
     const logger = vi.fn<(message: string) => void>();
     const loginMissing = new Error("ChatGPT session not detected. Login button detected on page.");
-    const checkLogin = vi.fn().mockRejectedValueOnce(loginMissing).mockResolvedValueOnce(undefined);
+    const checkLogin = vi.fn().mockRejectedValue(loginMissing);
 
     await expect(
       __test__.waitForLogin({
@@ -514,58 +547,38 @@ describe("login recovery reveal hook", () => {
         logger,
         appliedCookies: 0,
         manualLogin: true,
-        timeoutMs: 3000,
         onAuthNeeded: vi.fn().mockRejectedValue(new Error("restore failed")),
         ensureLoggedInFn: checkLogin,
-      }),
-    ).resolves.toBeUndefined();
-
-    expect(checkLogin).toHaveBeenCalledTimes(2);
-    expect(logger).toHaveBeenCalledWith(
-      "Failed to reveal browser for auth recovery: restore failed",
-    );
-  });
-
-  test("keeps polling manual-login when ChatGPT reports missing auth without a login button", async () => {
-    const logger = vi.fn<(message: string) => void>();
-    const authMissing = new Error(
-      "ChatGPT session not detected. ChatGPT login appears missing; sign in to ChatGPT in the opened browser, then resume.",
-    );
-    const checkLogin = vi.fn().mockRejectedValueOnce(authMissing).mockResolvedValueOnce(undefined);
-
-    await expect(
-      __test__.waitForLogin({
-        runtime: {} as never,
-        logger,
-        appliedCookies: 0,
-        manualLogin: true,
-        timeoutMs: 3000,
-        ensureLoggedInFn: checkLogin,
-      }),
-    ).resolves.toBeUndefined();
-
-    expect(checkLogin).toHaveBeenCalledTimes(2);
-  });
-
-  test("preserves manual-login browser on timeout", async () => {
-    const onAuthNeeded = vi.fn();
-    const authMissing = new Error("ChatGPT session not detected. No ChatGPT cookies were applied.");
-
-    await expect(
-      __test__.waitForLogin({
-        runtime: {} as never,
-        logger: vi.fn<(message: string) => void>(),
-        appliedCookies: 0,
-        manualLogin: true,
-        timeoutMs: 1,
-        manualLoginWaitMs: 1,
-        onAuthNeeded,
-        ensureLoggedInFn: vi.fn().mockRejectedValue(authMissing),
       }),
     ).rejects.toMatchObject({
       details: { stage: "login-required" },
     });
 
-    expect(onAuthNeeded).toHaveBeenCalled();
+    expect(checkLogin).toHaveBeenCalledTimes(1);
+    expect(logger).toHaveBeenCalledWith(
+      "Failed to reveal browser for auth recovery: restore failed",
+    );
+  });
+
+  test("routes missing auth without a login button to target recovery", async () => {
+    const logger = vi.fn<(message: string) => void>();
+    const authMissing = new Error(
+      "ChatGPT session not detected. ChatGPT login appears missing; sign in to ChatGPT in the opened browser, then resume.",
+    );
+    const checkLogin = vi.fn().mockRejectedValue(authMissing);
+
+    await expect(
+      __test__.waitForLogin({
+        runtime: {} as never,
+        logger,
+        appliedCookies: 0,
+        manualLogin: true,
+        ensureLoggedInFn: checkLogin,
+      }),
+    ).rejects.toMatchObject({
+      details: { stage: "login-required" },
+    });
+
+    expect(checkLogin).toHaveBeenCalledTimes(1);
   });
 });
