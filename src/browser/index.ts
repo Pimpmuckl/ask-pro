@@ -1666,7 +1666,8 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
             host: chromeHost,
             port: chrome.port,
             userDataDir,
-            ownedTargetId: isolatedTargetId,
+            previousTargetId: isolatedTargetId,
+            previousTargetOwned: ownsTarget,
             logger,
             timeoutMs: Math.min(config.manualLoginWaitMs ?? config.timeoutMs, config.timeoutMs),
           });
@@ -1691,7 +1692,9 @@ export async function runBrowserMode(options: BrowserRunOptions): Promise<Browse
           isolatedTargetId = recovered.ownsTarget ? recovered.targetId : null;
           ownsTarget = recovered.ownsTarget;
           connectionClosedUnexpectedly = false;
-          const restartedResult = await runBrowserMode(options);
+          const restartedResult = await runBrowserMode(
+            withRecoveredBrowserTabRef(options, config.browserTabRef, recovered.targetId),
+          );
           runStatus = "complete";
           return restartedResult;
         } finally {
@@ -1968,14 +1971,16 @@ async function waitForManualLoginOnLiveChrome({
   host,
   port,
   userDataDir,
-  ownedTargetId,
+  previousTargetId,
+  previousTargetOwned,
   logger,
   timeoutMs,
 }: {
   host: string;
   port: number;
   userDataDir: string;
-  ownedTargetId: string | null;
+  previousTargetId: string | null;
+  previousTargetOwned: boolean;
   logger: BrowserLogger;
   timeoutMs: number;
 }): Promise<{ port: number; targetId: string; ownsTarget: boolean }> {
@@ -2037,8 +2042,12 @@ async function waitForManualLoginOnLiveChrome({
         return {
           port: currentPort,
           targetId,
-          ownsTarget:
-            targetId === ownedTargetId || targetInfo?.targetInfo?.openerId === ownedTargetId,
+          ownsTarget: isRecoveredTargetOwned(
+            previousTargetOwned,
+            previousTargetId,
+            targetId,
+            targetInfo?.targetInfo?.openerId,
+          ),
         };
       } catch (error) {
         if (logger.verbose) {
@@ -2062,6 +2071,31 @@ async function waitForManualLoginOnLiveChrome({
     "Manual login mode timed out waiting for ChatGPT session; sign in in the open browser, then resume.",
     { stage: "login-required" },
   );
+}
+
+function isRecoveredTargetOwned(
+  previousTargetOwned: boolean,
+  previousTargetId: string | null,
+  recoveredTargetId: string,
+  openerId?: string,
+): boolean {
+  return (
+    previousTargetOwned &&
+    previousTargetId !== null &&
+    (recoveredTargetId === previousTargetId || openerId === previousTargetId)
+  );
+}
+
+function withRecoveredBrowserTabRef(
+  options: BrowserRunOptions,
+  configuredTabRef: string | null,
+  recoveredTargetId: string,
+): BrowserRunOptions {
+  if (!configuredTabRef) return options;
+  return {
+    ...options,
+    config: { ...options.config, browserTabRef: recoveredTargetId },
+  };
 }
 
 async function listLoginRecoveryTargets(
@@ -2882,6 +2916,8 @@ export const __test__ = {
   buildHumanInterventionProbeExpression,
   detectHumanInterventionReason,
   isLoginRecoveryUrl,
+  isRecoveredTargetOwned,
+  withRecoveredBrowserTabRef,
   waitForLogin,
 };
 export { syncCookies } from "./cookies.js";

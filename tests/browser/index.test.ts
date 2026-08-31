@@ -163,11 +163,18 @@ describe("post-submit input guard scope", () => {
 });
 
 describe("managed Chrome cleanup ownership", () => {
-  test("delegates successful manual-login restarts to completed cleanup", () => {
-    const runtimeSource = readFileSync("src/browser/index.ts", "utf8");
-    expect(runtimeSource).toMatch(
-      /const restartedResult = await runBrowserMode\(options\);\s+runStatus = "complete";\s+return restartedResult;/,
+  test("preserves attached-tab ownership and follows its recovered target", () => {
+    expect(__test__.isRecoveredTargetOwned(false, "attached", "attached")).toBe(false);
+    expect(__test__.isRecoveredTargetOwned(false, "attached", "replacement", "attached")).toBe(
+      false,
     );
+    expect(__test__.isRecoveredTargetOwned(true, "managed", "replacement", "managed")).toBe(true);
+
+    const options = { prompt: "question", config: { browserTabRef: "attached" } };
+    expect(
+      __test__.withRecoveredBrowserTabRef(options, "attached", "replacement").config?.browserTabRef,
+    ).toBe("replacement");
+    expect(__test__.withRecoveredBrowserTabRef(options, null, "replacement")).toBe(options);
   });
 
   test("closes a launched Chrome only when no other page remains", () => {
