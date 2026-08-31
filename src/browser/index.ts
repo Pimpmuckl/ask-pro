@@ -2031,6 +2031,18 @@ async function waitForManualLoginOnLiveChrome({
           port: currentPort,
           target: targetId,
         })) as ChromeClient;
+        const targetInfo = await client.Target.getTargetInfo({ targetId }).catch(() => null);
+        const openerId = targetInfo?.targetInfo?.openerId;
+        if (
+          !isEligibleManualLoginRecoveryTarget(
+            previousTargetOwned,
+            previousTargetId,
+            targetId,
+            openerId,
+          )
+        ) {
+          continue;
+        }
         const remainingMs = deadline - Date.now();
         if (remainingMs <= 0) break;
         await withTimeout(
@@ -2038,7 +2050,6 @@ async function waitForManualLoginOnLiveChrome({
           remainingMs,
           "Manual login recovery probe timed out",
         );
-        const targetInfo = await client.Target.getTargetInfo({ targetId }).catch(() => null);
         return {
           port: currentPort,
           targetId,
@@ -2046,7 +2057,7 @@ async function waitForManualLoginOnLiveChrome({
             previousTargetOwned,
             previousTargetId,
             targetId,
-            targetInfo?.targetInfo?.openerId,
+            openerId,
           ),
         };
       } catch (error) {
@@ -2080,9 +2091,29 @@ function isRecoveredTargetOwned(
   openerId?: string,
 ): boolean {
   return (
-    previousTargetOwned &&
+    previousTargetOwned && isRelatedManualLoginTarget(previousTargetId, recoveredTargetId, openerId)
+  );
+}
+
+function isEligibleManualLoginRecoveryTarget(
+  previousTargetOwned: boolean,
+  previousTargetId: string | null,
+  candidateTargetId: string,
+  openerId?: string,
+): boolean {
+  return (
+    previousTargetOwned || isRelatedManualLoginTarget(previousTargetId, candidateTargetId, openerId)
+  );
+}
+
+function isRelatedManualLoginTarget(
+  previousTargetId: string | null,
+  candidateTargetId: string,
+  openerId?: string,
+): boolean {
+  return (
     previousTargetId !== null &&
-    (recoveredTargetId === previousTargetId || openerId === previousTargetId)
+    (candidateTargetId === previousTargetId || openerId === previousTargetId)
   );
 }
 
@@ -2916,6 +2947,7 @@ export const __test__ = {
   buildHumanInterventionProbeExpression,
   detectHumanInterventionReason,
   isLoginRecoveryUrl,
+  isEligibleManualLoginRecoveryTarget,
   isRecoveredTargetOwned,
   withRecoveredBrowserTabRef,
   waitForLogin,

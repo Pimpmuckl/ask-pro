@@ -164,6 +164,13 @@ describe("post-submit input guard scope", () => {
 
 describe("managed Chrome cleanup ownership", () => {
   test("preserves attached-tab ownership and follows its recovered target", () => {
+    expect(__test__.isEligibleManualLoginRecoveryTarget(false, "attached", "unrelated")).toBe(
+      false,
+    );
+    expect(
+      __test__.isEligibleManualLoginRecoveryTarget(false, "attached", "replacement", "attached"),
+    ).toBe(true);
+    expect(__test__.isEligibleManualLoginRecoveryTarget(true, "managed", "unrelated")).toBe(true);
     expect(__test__.isRecoveredTargetOwned(false, "attached", "attached")).toBe(false);
     expect(__test__.isRecoveredTargetOwned(false, "attached", "replacement", "attached")).toBe(
       false,
