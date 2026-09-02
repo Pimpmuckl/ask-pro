@@ -39,6 +39,7 @@ ask_pro-specific notes:
 
 - Run the plugin validator successfully before committing any plugin-facing
   change.
+- If Review Suite is installed, run it only in `fast` mode.
 
 - Live browser smokes are opt-in; see `docs/manual-tests.md`.
 - Working on Windows? Read and update `docs/windows-work.md`.
